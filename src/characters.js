@@ -28,7 +28,7 @@ export function createWeaponMesh(tier = 0) {
   const t = Math.min(tier, 4);
 
   const g = new THREE.Group();
-  const bladeLen = 0.70 + t * 0.045;
+  const bladeLen = 0.52 + t * 0.04;
   const blade = box(0.095, bladeLen, 0.03, flat(bladeCols[t]));
   blade.position.y = bladeLen / 2 + 0.12;
   g.add(blade);
@@ -40,8 +40,8 @@ export function createWeaponMesh(tier = 0) {
   const guard = box(0.22, 0.055, 0.08, flat(guardCols[t]));
   guard.position.y = 0.12;
   g.add(guard);
-  const grip = caps(0.04, 0.044, 0.21, flat(gripCols[t]), 6);
-  grip.position.y = -0.02;
+  const grip = caps(0.038, 0.042, 0.24, flat(gripCols[t]), 6);
+  grip.position.y = -0.04;
   g.add(grip);
   const pommel = sphere(0.042, flat(guardCols[t]), 7);
   pommel.position.y = -0.135;
@@ -105,8 +105,8 @@ export function createPlayerModel() {
   head.position.y = 0.12;
   neck.add(head);
   const hair = sphere(0.172, hairM, 12);
-  hair.scale.set(1.0, 0.82, 1.0);
-  hair.position.set(0, 0.158, -0.045);
+  hair.scale.set(1.04, 0.95, 1.04);
+  hair.position.set(0, 0.132, -0.05);
   neck.add(hair);
   const eyeMat = new THREE.MeshBasicMaterial({ color: '#2b1c12' });
   for (const sgn of [-1, 1]) {
@@ -127,11 +127,11 @@ export function createPlayerModel() {
   neck.add(crown);
 
   const braid = new THREE.Group();
-  braid.position.set(0, 0.10, -0.11);
+  braid.position.set(0, 0.09, -0.20);
   neck.add(braid);
-  for (let i = 0; i < 7; i++) {
-    const s = sphere(0.06 - i * 0.0045, hairM, 8);
-    s.position.set(0, -i * 0.085, 0);
+  for (let i = 0; i < 10; i++) {
+    const s = sphere(0.06 - i * 0.0015, hairM, 8);
+    s.position.set(0, -i * 0.055, 0);
     braid.add(s);
   }
 
@@ -155,7 +155,7 @@ export function createPlayerModel() {
     const hand = new THREE.Group();
     hand.position.y = -0.37;
     elbow.add(hand);
-    const fist = sphere(0.085, skinM, 8);
+    const fist = sphere(0.072, skinM, 8);
     hand.add(fist);
     return { shoulder, elbow, hand };
   }
@@ -167,17 +167,17 @@ export function createPlayerModel() {
     const hip = new THREE.Group();
     hip.position.set(0.115 * side, -0.16, 0);
     hips.add(hip);
-    const thigh = caps(0.105, 0.092, 0.44, pants, 7);
-    thigh.position.y = -0.24;
+    const thigh = caps(0.105, 0.092, 0.40, pants, 7);
+    thigh.position.y = -0.20;
     hip.add(thigh);
     const knee = new THREE.Group();
-    knee.position.y = -0.46;
+    knee.position.y = -0.40;
     hip.add(knee);
-    const shin = caps(0.09, 0.078, 0.4, pants, 7);
-    shin.position.y = -0.2;
+    const shin = caps(0.09, 0.078, 0.30, pants, 7);
+    shin.position.y = -0.15;
     knee.add(shin);
-    const boot = box(0.17, 0.15, 0.28, leatherDark);
-    boot.position.set(0, -0.44, 0.04);
+    const boot = box(0.17, 0.14, 0.28, leatherDark);
+    boot.position.set(0, -0.272, 0.04);
     knee.add(boot);
     return { hip, knee };
   }
@@ -190,6 +190,8 @@ export function createPlayerModel() {
   armR.hand.add(weaponMount);
   let weapon = createWeaponMesh(0);
   weaponMount.add(weapon);
+
+  root.scale.setScalar(0.91);   // brings the rig to ~1.8m tall
 
   root.userData = {
     hips, torso, neck, armR, armL, legR, legL, weaponMount,
@@ -277,10 +279,13 @@ export function createMonsterModel(variant = 0) {
     const claw = new THREE.Group();
     claw.position.y = -0.4;
     elbow.add(claw);
+    const palm = sphere(0.095, dark, 8);
+    palm.scale.set(1.0, 0.8, 0.9);
+    claw.add(palm);
     for (let i = 0; i < 3; i++) {
       const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.18, 4), flat('#e8e2d2'));
-      c.position.set((i - 1) * 0.06, -0.08, 0.02);
-      c.rotation.x = Math.PI;
+      c.position.set((i - 1) * 0.062, -0.11, 0.05 - Math.abs(i - 1) * 0.06);
+      c.rotation.set(Math.PI, 0, (i - 1) * 0.16);
       c.castShadow = true;
       claw.add(c);
     }

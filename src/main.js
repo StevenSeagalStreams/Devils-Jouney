@@ -105,7 +105,7 @@ function spawnMonster(level) {
     m.pos.set(player.pos.x + Math.cos(a) * r, 0, player.pos.z + Math.sin(a) * r);
   }
   m.obj.position.copy(m.pos);
-  m.obj.scale.setScalar(0.95 + Math.min(level, 8) * 0.03);
+  m.obj.scale.setScalar(0.88 + Math.min(level, 8) * 0.03);
   scene.add(m.obj);
   return m;
 }
@@ -492,6 +492,7 @@ function animatePlayer(dt, moving, sprinting) {
 
   // left arm swings with the walk
   u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, swing * 0.9, dt * 14);
+  u.armL.shoulder.rotation.z = THREE.MathUtils.lerp(u.armL.shoulder.rotation.z, 0.26, dt * 10);
   u.armL.elbow.rotation.x = -0.3 - Math.max(0, swing) * 0.4;
 
   if (player.attackTime >= 0) {
@@ -505,7 +506,7 @@ function animatePlayer(dt, moving, sprinting) {
     u.torso.rotation.y = -0.35 * wind + slash * 0.7;
   } else {
     // relaxed guard: sword held low and slightly out, like the concept art
-    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.2, dt * 10);
+    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.5, dt * 10);
     u.armR.shoulder.rotation.z = THREE.MathUtils.lerp(u.armR.shoulder.rotation.z, -0.26, dt * 10);
     u.armR.elbow.rotation.x = THREE.MathUtils.lerp(u.armR.elbow.rotation.x, -0.25, dt * 10);
   }
