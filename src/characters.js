@@ -28,23 +28,23 @@ export function createWeaponMesh(tier = 0) {
   const t = Math.min(tier, 4);
 
   const g = new THREE.Group();
-  const bladeLen = 1.05 + t * 0.06;
-  const blade = box(0.115, bladeLen, 0.035, flat(bladeCols[t]));
+  const bladeLen = 0.70 + t * 0.045;
+  const blade = box(0.095, bladeLen, 0.03, flat(bladeCols[t]));
   blade.position.y = bladeLen / 2 + 0.12;
   g.add(blade);
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.082, 0.24, 4), flat(bladeCols[t]));
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.068, 0.19, 4), flat(bladeCols[t]));
   tip.rotation.y = Math.PI / 4;
   tip.position.y = bladeLen + 0.22;
   tip.castShadow = true;
   g.add(tip);
-  const guard = box(0.38, 0.07, 0.11, flat(guardCols[t]));
+  const guard = box(0.22, 0.055, 0.08, flat(guardCols[t]));
   guard.position.y = 0.12;
   g.add(guard);
-  const grip = caps(0.045, 0.05, 0.26, flat(gripCols[t]), 6);
+  const grip = caps(0.04, 0.044, 0.21, flat(gripCols[t]), 6);
   grip.position.y = -0.02;
   g.add(grip);
-  const pommel = sphere(0.062, flat(guardCols[t]), 7);
-  pommel.position.y = -0.16;
+  const pommel = sphere(0.042, flat(guardCols[t]), 7);
+  pommel.position.y = -0.135;
   g.add(pommel);
   if (t >= 3) {
     const glow = new THREE.PointLight(bladeCols[t], t >= 4 ? 1.1 : 0.6, 4);
@@ -74,20 +74,20 @@ export function createPlayerModel() {
   // torso
   const torso = new THREE.Group();
   hips.add(torso);
-  const chest = box(0.52, 0.6, 0.32, leather);
+  const chest = box(0.40, 0.58, 0.27, leather);
   chest.position.y = 0.34;
   torso.add(chest);
-  const belly = box(0.42, 0.26, 0.28, cloth);
+  const belly = box(0.30, 0.26, 0.24, cloth);
   belly.position.y = -0.02;
   torso.add(belly);
-  const belt = box(0.48, 0.11, 0.32, leatherDark);
+  const belt = box(0.40, 0.11, 0.27, leatherDark);
   belt.position.y = -0.15;
   torso.add(belt);
   const buckle = box(0.1, 0.1, 0.06, flat('#c9a554'));
-  buckle.position.set(0, -0.15, 0.2);
+  buckle.position.set(0, -0.15, 0.15);
   torso.add(buckle);
   // skirt / tassets
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.36, 0.38, 9, 1, true), leather);
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.31, 0.38, 9, 1, true), leather);
   skirt.material.side = THREE.DoubleSide;
   skirt.position.y = -0.34;
   skirt.castShadow = true;
@@ -101,39 +101,44 @@ export function createPlayerModel() {
   head.scale.set(0.92, 1.05, 0.95);
   head.position.y = 0.12;
   neck.add(head);
-  const hair = sphere(0.178, hairM, 12);
-  hair.scale.set(0.98, 0.95, 1.0);
-  hair.position.set(0, 0.155, -0.012);
+  const hair = sphere(0.172, hairM, 12);
+  hair.scale.set(1.0, 0.82, 1.0);
+  hair.position.set(0, 0.158, -0.045);
   neck.add(hair);
   const eyeMat = new THREE.MeshBasicMaterial({ color: '#2b1c12' });
   for (const sgn of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.021, 7, 7), eyeMat);
-    eye.position.set(0.058 * sgn, 0.135, 0.152);
+    eye.position.set(0.052 * sgn, 0.132, 0.158);
     neck.add(eye);
   }
   const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.018, 0.02), new THREE.MeshBasicMaterial({ color: '#5d3a20' }));
-  brow.position.set(0, 0.175, 0.152);
+  brow.position.set(0, 0.168, 0.156);
   neck.add(brow);
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.02), new THREE.MeshBasicMaterial({ color: '#8d5340' }));
-  mouth.position.set(0, 0.072, 0.155);
+  mouth.position.set(0, 0.073, 0.158);
   neck.add(mouth);
+
+  const crown = sphere(0.176, hairM, 12);
+  crown.scale.set(1.0, 0.66, 1.0);
+  crown.position.set(0, 0.2, -0.01);
+  neck.add(crown);
 
   const braid = new THREE.Group();
   braid.position.set(0, 0.10, -0.15);
   neck.add(braid);
-  for (let i = 0; i < 5; i++) {
-    const s = sphere(0.072 - i * 0.009, hairM, 8);
-    s.position.set(0, -i * 0.085, -i * 0.012);
+  for (let i = 0; i < 7; i++) {
+    const s = sphere(0.06 - i * 0.0045, hairM, 8);
+    s.position.set(0, -i * 0.085, -i * 0.008);
     braid.add(s);
   }
 
   // shoulders / arms
   function arm(side) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(0.31 * side, 0.54, 0);
+    shoulder.position.set(0.21 * side, 0.52, 0);
     torso.add(shoulder);
-    const pauldron = sphere(0.175, leather, 9);
-    pauldron.scale.set(1.05, 0.8, 1.0);
+    const pauldron = sphere(0.115, leather, 9);
+    pauldron.scale.set(1.15, 0.85, 1.05);
     shoulder.add(pauldron);
     const upper = caps(0.085, 0.075, 0.34, skinM, 7);
     upper.position.y = -0.24;
@@ -157,7 +162,7 @@ export function createPlayerModel() {
   // legs
   function leg(side) {
     const hip = new THREE.Group();
-    hip.position.set(0.145 * side, -0.16, 0);
+    hip.position.set(0.115 * side, -0.16, 0);
     hips.add(hip);
     const thigh = caps(0.105, 0.092, 0.44, pants, 7);
     thigh.position.y = -0.24;
@@ -178,7 +183,7 @@ export function createPlayerModel() {
 
   // sword lives in the right hand
   const weaponMount = new THREE.Group();
-  weaponMount.rotation.set(2.00, 0.70, 0.60);
+  weaponMount.rotation.set(2.00, 1.10, 0.40);
   armR.hand.add(weaponMount);
   let weapon = createWeaponMesh(0);
   weaponMount.add(weapon);
@@ -209,85 +214,98 @@ export function createMonsterModel(variant = 0) {
   const dark = flat(p.dark);
 
   const root = new THREE.Group();
+  // body sits low so the whole thing stands about 1.55m — shorter than the hero
   const body = new THREE.Group();
-  body.position.y = 0.95;
+  body.position.y = 0.98;
   root.add(body);
 
-  const torso = box(0.66, 0.7, 0.5, skin);
-  torso.position.y = 0.1;
-  torso.rotation.x = 0.42;
-  body.add(torso);
-  const hipBox = box(0.54, 0.34, 0.44, dark);
-  hipBox.position.y = -0.26;
+  // everything above the hips leans forward; the legs stay under it
+  const lean = new THREE.Group();
+  lean.rotation.x = 0.30;
+  body.add(lean);
+
+  const torso = box(0.5, 0.6, 0.42, skin);
+  torso.position.y = 0.12;
+  lean.add(torso);
+  const hipBox = box(0.44, 0.28, 0.38, dark);
+  hipBox.position.y = -0.2;
   body.add(hipBox);
 
+  const neckCol = caps(0.09, 0.11, 0.12, dark, 7);
+  neckCol.position.set(0, 0.44, 0.04);
+  lean.add(neckCol);
+
   const headPivot = new THREE.Group();
-  headPivot.position.set(0, 0.42, 0.24);
-  body.add(headPivot);
-  const head = box(0.42, 0.36, 0.44, skin);
+  headPivot.position.set(0, 0.56, 0.06);
+  lean.add(headPivot);
+  const head = box(0.3, 0.28, 0.32, skin);
   headPivot.add(head);
-  const jaw = box(0.3, 0.14, 0.3, dark);
-  jaw.position.set(0, -0.2, 0.1);
+  const brow = box(0.32, 0.08, 0.06, dark);
+  brow.position.set(0, 0.06, 0.15);
+  headPivot.add(brow);
+  const jaw = box(0.22, 0.11, 0.22, dark);
+  jaw.position.set(0, -0.16, 0.07);
   headPivot.add(jaw);
   for (const s of [-1, 1]) {
-    const eye = sphere(0.055, new THREE.MeshBasicMaterial({ color: p.eye }), 7);
-    eye.position.set(0.11 * s, 0.05, 0.22);
+    const eye = sphere(0.032, new THREE.MeshBasicMaterial({ color: p.eye }), 7);
+    eye.position.set(0.075 * s, 0.0, 0.16);
     headPivot.add(eye);
-    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.26, 5), dark);
-    horn.position.set(0.14 * s, 0.24, -0.02);
-    horn.rotation.z = -0.4 * s;
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.13, 5), dark);
+    horn.position.set(0.1 * s, 0.16, -0.04);
+    horn.rotation.set(-0.5, 0, -0.2 * s);   // swept back, not splayed out
     horn.castShadow = true;
     headPivot.add(horn);
   }
 
+  // long arms hanging low; the segments meet cleanly at the elbow
   function limb(side) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(0.4 * side, 0.28, 0);
-    body.add(shoulder);
-    const upper = caps(0.13, 0.11, 0.48, skin, 7);
+    shoulder.position.set(0.31 * side, 0.28, 0);
+    lean.add(shoulder);
+    const upper = caps(0.12, 0.1, 0.44, skin, 7);
     upper.position.y = -0.22;
-    upper.rotation.z = 0.25 * -side;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.set(0.1 * side, -0.5, 0);
+    elbow.position.y = -0.44;
     shoulder.add(elbow);
-    const fore = caps(0.11, 0.1, 0.44, dark, 7);
+    const fore = caps(0.1, 0.09, 0.4, dark, 7);
     fore.position.y = -0.2;
     elbow.add(fore);
     const claw = new THREE.Group();
-    claw.position.y = -0.48;
+    claw.position.y = -0.4;
     elbow.add(claw);
     for (let i = 0; i < 3; i++) {
-      const c = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.22, 4), flat('#e8e2d2'));
-      c.position.set((i - 1) * 0.07, -0.1, 0.03);
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.18, 4), flat('#e8e2d2'));
+      c.position.set((i - 1) * 0.06, -0.08, 0.02);
       c.rotation.x = Math.PI;
       c.castShadow = true;
       claw.add(c);
     }
     return { shoulder, elbow, claw };
   }
-  const armR = limb(1), armL = limb(-1);
+  const armR = limb(-1), armL = limb(1);
 
+  // legs: short and stocky, feet flat on the ground
   function leg(side) {
     const hip = new THREE.Group();
-    hip.position.set(0.19 * side, -0.36, 0);
+    hip.position.set(0.16 * side, -0.3, 0);
     body.add(hip);
-    const thigh = caps(0.14, 0.12, 0.4, skin, 7);
-    thigh.position.y = -0.2;
+    const thigh = caps(0.13, 0.11, 0.32, skin, 7);
+    thigh.position.y = -0.16;
     hip.add(thigh);
     const knee = new THREE.Group();
-    knee.position.y = -0.4;
+    knee.position.y = -0.32;
     hip.add(knee);
-    const shin = caps(0.11, 0.09, 0.36, dark, 7);
-    shin.position.y = -0.18;
+    const shin = caps(0.1, 0.085, 0.28, dark, 7);
+    shin.position.y = -0.14;
     knee.add(shin);
-    const foot = box(0.22, 0.13, 0.34, dark);
-    foot.position.set(0, -0.38, 0.06);
+    const foot = box(0.2, 0.12, 0.3, dark);
+    foot.position.set(0, -0.3, 0.05);
     knee.add(foot);
     return { hip, knee };
   }
-  const legR = leg(1), legL = leg(-1);
+  const legR = leg(-1), legL = leg(1);
 
-  root.userData = { body, headPivot, armR, armL, legR, legL };
+  root.userData = { body, lean, headPivot, armR, armL, legR, legL };
   return root;
 }

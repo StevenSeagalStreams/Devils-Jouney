@@ -17,9 +17,9 @@ const best = await page.evaluate(async () => {
   const mount = u.weaponMount;
   const blade = mount.children[0].children[0]; // blade mesh
   // freeze the idle arm pose the game uses, so the solve matches play
-  u.armR.shoulder.rotation.set(0.22, 0, -0.5);
+  u.armR.shoulder.rotation.set(0.22, 0, -0.26);
   u.armR.elbow.rotation.set(-0.25, 0, 0);
-  const want = new THREE.Vector3(-0.62, -0.38, 0.68).normalize();
+  const want = new THREE.Vector3(-0.30, -0.62, 0.72).normalize();
   const tip = new THREE.Vector3(), hand = new THREE.Vector3(), dir = new THREE.Vector3();
   const inv = new THREE.Matrix4();
   let best = null;

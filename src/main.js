@@ -266,7 +266,7 @@ function gainXp(amount) {
 function damageMonster(amount, crit) {
   monster.hp -= amount;
   monster.hurt = 0.18;
-  ui.floatText(`${amount}`, screenOf(monster.pos, 2.2), crit ? 'crit' : 'dmg');
+  ui.floatText(`${amount}`, screenOf(monster.pos, 1.75), crit ? 'crit' : 'dmg');
   if (monster.hp <= 0) killMonster();
 }
 
@@ -276,7 +276,7 @@ function killMonster() {
   monster.stateT = 0;
   const xp = 18 + monster.level * 8;
   gainXp(xp);
-  ui.floatText(`+${xp} xp`, screenOf(monster.pos, 2.6), 'xp');
+  ui.floatText(`+${xp} xp`, screenOf(monster.pos, 2.0), 'xp');
   ui.removeEnemyBar(monster.id);
 
   // loot: always something small, sometimes a real upgrade
@@ -411,8 +411,8 @@ function animateMonster(m, dt) {
   u.legL.hip.rotation.x = -swing;
   u.legR.knee.rotation.x = Math.max(0, -swing) * 0.6;
   u.legL.knee.rotation.x = Math.max(0, swing) * 0.6;
-  u.body.position.y = 0.95 + Math.abs(Math.sin(m.walkPhase)) * 0.06;
-  u.headPivot.rotation.x = -0.1 + Math.sin(m.walkPhase * 0.5) * 0.05;
+  u.body.position.y = 0.98 + Math.abs(Math.sin(m.walkPhase)) * 0.05;
+  u.headPivot.rotation.x = -0.22 + Math.sin(m.walkPhase * 0.5) * 0.05;
 
   if (m.state === 'attack' && m.attackT >= 0) {
     const p = THREE.MathUtils.clamp(m.attackT / 0.9, 0, 1);
@@ -506,7 +506,7 @@ function animatePlayer(dt, moving, sprinting) {
   } else {
     // relaxed guard: sword held low and slightly out, like the concept art
     u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.2, dt * 10);
-    u.armR.shoulder.rotation.z = THREE.MathUtils.lerp(u.armR.shoulder.rotation.z, -0.5, dt * 10);
+    u.armR.shoulder.rotation.z = THREE.MathUtils.lerp(u.armR.shoulder.rotation.z, -0.26, dt * 10);
     u.armR.elbow.rotation.x = THREE.MathUtils.lerp(u.armR.elbow.rotation.x, -0.25, dt * 10);
   }
 }
@@ -579,7 +579,7 @@ function frame() {
     state.level);
 
   if (!monster.dead) {
-    const s = screenOf(monster.pos, 2.35);
+    const s = screenOf(monster.pos, 1.85);
     ui.updateEnemyBar(monster.id, {
       x: s.x, y: s.y, visible: s.visible,
       pct: monster.hp / monster.maxHp,
