@@ -32,6 +32,16 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 ## How it plays
 
 * One monster roams the meadow. Get close and it charges you.
+* It has two attacks, both telegraphed by a ring that grows out to the blow's
+  reach and lands exactly when the ring stops:
+  * a **quick jab** — a short wind-up, modest damage, and it keeps tracking you
+    slowly, so back off or take it;
+  * a **heavy slam** — it rears back with both arms and glows red for over a
+    second, hits for more than three times as much, but commits to the
+    direction it started in, so you can side-step it.
+* Either way the blow only lands if you are still inside the ring and in front
+  of it when it connects. Miss it and the monster is wide open through its
+  recovery — that is your window to swing back.
 * Hitting it costs a little stamina; killing it gives xp and drops one item.
 * Walk over the item to pick it up. If it is better than what you wear, you put
   it on automatically — no menu digging required.

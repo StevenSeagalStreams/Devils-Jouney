@@ -75,6 +75,42 @@ const player = {
 scene.add(player.obj);
 
 /* --------------------------- monster --------------------------- */
+/* Two attacks with readable tells. `hit` is when the damage lands, so the whole
+   windup is reaction time; `track` is how fast it may keep re-aiming at you
+   while winding up — the heavy commits and can be side-stepped. */
+const ATTACKS = {
+  light: { kind: 'light', hit: 0.62, recover: 0.45, range: 2.7, dmg: 0.7, cooldown: 0.8, track: 2.6, tell: '#ffb02e' },
+  heavy: { kind: 'heavy', hit: 1.25, recover: 0.9, range: 3.4, dmg: 2.4, cooldown: 1.6, track: 0, tell: '#ff3b1f' },
+};
+
+// one shared ground ring: it grows to the attack's reach exactly as the blow lands
+const telegraph = new THREE.Mesh(
+  new THREE.RingGeometry(0.82, 1.0, 40),
+  new THREE.MeshBasicMaterial({ color: '#ff5a3c', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+telegraph.rotation.x = -Math.PI / 2;
+telegraph.visible = false;
+telegraph.renderOrder = 2;
+scene.add(telegraph);
+
+function startAttack(m, kind) {
+  const a = ATTACKS[kind];
+  m.atk = { ...a, t: 0, hasHit: false };
+  m.state = 'attack';
+  m.stateT = 0;
+  m.lastHeavy = kind === 'heavy';
+}
+
+function updateTelegraph(m) {
+  const a = m.state === 'attack' ? m.atk : null;
+  if (!a || a.hasHit) { telegraph.visible = false; return; }
+  const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
+  telegraph.visible = true;
+  telegraph.position.set(m.pos.x, heightAt(m.pos.x, m.pos.z) + 0.06, m.pos.z);
+  const s = (a.range * p) / 1.0;
+  telegraph.scale.setScalar(Math.max(0.05, s));
+  telegraph.material.color.set(a.tell);
+  telegraph.material.opacity = 0.25 + 0.6 * p;
+}
 let monsterSeq = 0;
 function spawnMonster(level) {
   const m = {
@@ -89,8 +125,9 @@ function spawnMonster(level) {
     speed: 2.5,
     state: 'idle',
     stateT: 0,
-    attackT: -1,
-    hasHit: false,
+    atk: null,
+    cooldown: 0,
+    lastHeavy: false,
     hurt: 0,
     walkPhase: 0,
     wander: new THREE.Vector3(),
@@ -244,6 +281,7 @@ function syncHotbar() {
 /* --------------------------- combat helpers --------------------------- */
 const tmpV = new THREE.Vector3();
 const tmpFoot = new THREE.Vector3();
+const tmpFacing = new THREE.Vector3();
 
 /** Rigid legs shorten as they swing, so pin the lowest foot to the terrain and
  *  let the pelvis height fall out of that — no hand-tuned bob to get wrong. */
@@ -259,14 +297,16 @@ function plantFeet(obj, pelvis, base, feet) {
   if (!Number.isFinite(lowest)) return;
   pelvis.position.y = base + (obj.position.y - lowest) / scale;
 }
+// its own scratch vector: callers hold live references to tmpV across a call
+const tmpProj = new THREE.Vector3();
 function screenOf(v3, yOffset = 0) {
-  tmpV.copy(v3);
-  tmpV.y += yOffset;
-  tmpV.project(camera);
+  tmpProj.copy(v3);
+  tmpProj.y += yOffset;
+  tmpProj.project(camera);
   return {
-    x: (tmpV.x * 0.5 + 0.5) * innerWidth,
-    y: (-tmpV.y * 0.5 + 0.5) * innerHeight,
-    visible: tmpV.z < 1 && Math.abs(tmpV.x) <= 1 && Math.abs(tmpV.y) <= 1,
+    x: (tmpProj.x * 0.5 + 0.5) * innerWidth,
+    y: (-tmpProj.y * 0.5 + 0.5) * innerHeight,
+    visible: tmpProj.z < 1 && Math.abs(tmpProj.x) <= 1 && Math.abs(tmpProj.y) <= 1,
   };
 }
 
@@ -364,10 +404,12 @@ function updateMonster(dt) {
   const m = monster;
   m.stateT += dt;
   m.hurt = Math.max(0, m.hurt - dt);
+  m.cooldown = Math.max(0, m.cooldown - dt);
 
   if (m.state === 'dead') {
     m.obj.rotation.x = THREE.MathUtils.lerp(m.obj.rotation.x, -Math.PI / 2.2, dt * 6);
     m.obj.position.y = THREE.MathUtils.lerp(m.obj.position.y, heightAt(m.pos.x, m.pos.z) - 0.3, dt * 4);
+    telegraph.visible = false;
     if (respawnT > 0) {
       respawnT -= dt;
       if (respawnT <= 0) {
@@ -398,20 +440,40 @@ function updateMonster(dt) {
     if (dist < 12) { m.state = 'chase'; m.stateT = 0; }
   } else if (m.state === 'chase') {
     m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * 6));
-    if (dist > 1.9) {
+    if (m.cooldown > 0 && dist < 2.4) {
+      // give ground after swinging, so the fight has a rhythm
+      m.pos.addScaledVector(toPlayer, -m.speed * 0.55 * dt);
+      m.walkPhase += dt * 5;
+    } else if (dist > 1.9) {
       m.pos.addScaledVector(toPlayer, m.speed * dt);
       m.walkPhase += dt * 8;
     }
-    if (dist < 2.3) { m.state = 'attack'; m.stateT = 0; m.attackT = 0; m.hasHit = false; }
+    if (dist < 2.3 && m.cooldown <= 0) {
+      startAttack(m, !m.lastHeavy && Math.random() < 0.4 ? 'heavy' : 'light');
+    }
     if (dist > 20) { m.state = 'idle'; m.stateT = 0; }
   } else if (m.state === 'attack') {
-    m.attackT += dt;
-    m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * 4));
-    if (!m.hasHit && m.attackT > 0.45) {
-      m.hasHit = true;
-      if (dist < 2.9) hurtPlayer(m.damage * (0.85 + Math.random() * 0.3));
+    const a = m.atk;
+    a.t += dt;
+    // the heavy commits once it starts; the light still tracks you, but slowly
+    if (a.track > 0 && !a.hasHit) {
+      m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * a.track));
     }
-    if (m.attackT > 1.0) { m.state = dist < 12 ? 'chase' : 'idle'; m.stateT = 0; m.attackT = -1; }
+    if (!a.hasHit && a.t >= a.hit) {
+      a.hasHit = true;
+      const facing = tmpFacing.set(Math.sin(m.yaw), 0, Math.cos(m.yaw));
+      if (dist < a.range && toPlayer.dot(facing) > 0.25) {
+        hurtPlayer(m.damage * a.dmg * (0.9 + Math.random() * 0.2));
+      } else {
+        ui.floatText('forbi!', screenOf(m.pos, 1.9), 'loot');
+      }
+    }
+    // the tail of the swing is a punish window: it cannot move or turn
+    if (a.t >= a.hit + a.recover) {
+      m.state = dist < 14 ? 'chase' : 'idle';
+      m.stateT = 0;
+      m.cooldown = a.cooldown;
+    }
   }
 
   // never let it stand inside the player
@@ -425,6 +487,7 @@ function updateMonster(dt) {
   m.pos.z = THREE.MathUtils.clamp(m.pos.z, -lim, lim);
   m.obj.position.set(m.pos.x, heightAt(m.pos.x, m.pos.z), m.pos.z);
   m.obj.rotation.y = m.yaw;
+  updateTelegraph(m);
   animateMonster(m, dt);
 }
 
@@ -441,26 +504,44 @@ function animateMonster(m, dt) {
   ]);
   u.headPivot.rotation.x = -0.22 + Math.sin(m.walkPhase * 0.5) * 0.05;
 
-  if (m.state === 'attack' && m.attackT >= 0) {
-    const p = THREE.MathUtils.clamp(m.attackT / 0.9, 0, 1);
-    const raise = Math.sin(Math.min(p, 0.5) * Math.PI) * 2.0;
-    const strike = p > 0.5 ? (p - 0.5) * 2 : 0;
-    const rec = p > 0.75 ? (p - 0.75) / 0.25 : 0;
-    const k = rec * rec * (3 - 2 * rec);
+  if (m.state === 'attack' && m.atk) {
+    const a = m.atk;
+    const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
+    const post = THREE.MathUtils.clamp((a.t - a.hit) / a.recover, 0, 1);
+    const ease = post * post * (3 - 2 * post);
     const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
-    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(-raise + strike * 2.4, idle, k);
-    u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(-raise * 0.4, -idle, k);
+    const L = THREE.MathUtils.lerp;
+    if (a.kind === 'heavy') {
+      // both arms haul up overhead, body rears back, then a committed slam
+      const raise = Math.sin(p * Math.PI * 0.5) * 2.6;
+      u.armR.shoulder.rotation.x = L(-raise + ease * 3.2, idle, ease * 0.7);
+      u.armL.shoulder.rotation.x = L(-raise + ease * 3.2, -idle, ease * 0.7);
+      u.lean.rotation.x = 0.3 - 0.28 * p + 0.5 * ease;
+    } else {
+      // a short cocked jab with the one arm
+      const cock = Math.sin(p * Math.PI * 0.5) * 1.4;
+      u.armR.shoulder.rotation.x = L(-cock + ease * 2.3, idle, ease * 0.75);
+      u.armL.shoulder.rotation.x = L(cock * 0.25, -idle, ease * 0.75);
+      u.lean.rotation.x = 0.3 + 0.12 * p;
+    }
   } else {
+    u.lean.rotation.x = THREE.MathUtils.lerp(u.lean.rotation.x, 0.3, dt * 6);
     const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
     u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, idle, dt * 6);
     u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, -idle, dt * 6);
   }
-  // flash white-ish when hit
+  // hit flash wins; otherwise the body glows while a blow is winding up
   const hurt = m.hurt > 0;
+  let r = 0, g = 0, bl = 0;
+  if (hurt) { r = 0.45; g = 0.1; bl = 0.1; }
+  else if (m.state === 'attack' && m.atk && !m.atk.hasHit) {
+    const charge = THREE.MathUtils.clamp(m.atk.t / m.atk.hit, 0, 1);
+    const heavy = m.atk.kind === 'heavy';
+    r = charge * (heavy ? 0.45 : 0.24);
+    g = charge * (heavy ? 0.06 : 0.16);
+  }
   m.obj.traverse(o => {
-    if (o.isMesh && o.material && o.material.emissive) {
-      o.material.emissive.setRGB(hurt ? 0.45 : 0, hurt ? 0.1 : 0, hurt ? 0.1 : 0);
-    }
+    if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setRGB(r, g, bl);
   });
 }
 
@@ -587,7 +668,7 @@ function updateDrops(dt) {
     d.t += dt;
     d.obj.rotation.y += dt * 1.6;
     d.obj.position.y = heightAt(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
-    if (player.pos.distanceTo(d.obj.position) < 1.8) {
+    if (Math.hypot(d.obj.position.x - player.pos.x, d.obj.position.z - player.pos.z) < 2.0) {
       state.bag.unshift(d.item);
       syncHotbar();
       // auto-equip if it is clearly better, so the demo stays friendly
@@ -688,6 +769,7 @@ updateCamera(1);
 frame();
 
 window.__djPose = () => animatePlayer(0.016, false, false);
+window.__djHeightAt = heightAt;
 window.__djCam = (dt, pitch) => { if (pitch !== undefined) look.pitch = pitch; updateCamera(dt); };
 
 // expose a little of the state for automated look-tests
@@ -697,6 +779,9 @@ window.__dj = {
   get lootDropped() { return lootDropped; },
   get monster() { return monster; },
   attack() { wantAttack = true; },
+  forceAttack(kind) { monster.cooldown = 0; startAttack(monster, kind); },
+  dropAt(x, z) { dropLoot(makeItem('armor', state.level), new THREE.Vector3(x, 0, z)); },
+  get attacks() { return ATTACKS; },
   give(n = 3) {
     for (let i = 0; i < n; i++) state.bag.push(makeItem(['weapon', 'armor', 'trinket'][i % 3], state.level));
     syncHotbar();

@@ -139,15 +139,81 @@ await page.screenshot({ path: 'shots/test-inventory.png' });
 await page.keyboard.press('i');
 await page.waitForTimeout(400);
 
+// --- loot must be reachable wherever it lands, including on high ground
+const hilly = await page.evaluate(() => {
+  const d = window.__dj;
+  // drop an item where the terrain is well above the origin plane
+  let spot = null;
+  for (let r = 20; r < 90 && !spot; r += 5) {
+    for (let a = 0; a < 6.28; a += 0.4) {
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (Math.abs(window.__djHeightAt(x, z)) > 2.5) { spot = { x, z }; break; }
+    }
+  }
+  if (!spot) return { skipped: true };
+  const before = d.state.bag.length + Object.values(d.state.equipped).filter(Boolean).length;
+  d.dropAt(spot.x, spot.z);
+  d.player.pos.set(spot.x, 0, spot.z);
+  return { spot, before, terrain: +window.__djHeightAt(spot.x, spot.z).toFixed(2) };
+});
+await gameWait(0.5);
+const hillyAfter = await page.evaluate(() => ({
+  drops: window.__dj.drops.length,
+  owned: window.__dj.state.bag.length + Object.values(window.__dj.state.equipped).filter(Boolean).length,
+}));
+check('loot on high ground can be picked up', !hilly.skipped && hillyAfter.drops === 0,
+  hilly.skipped ? 'no sloped spot found' : `terrain y=${hilly.terrain}, ${hillyAfter.drops} left on the ground`);
+
+// --- the two attacks: different timing, different damage, and dodgeable
+const timings = await page.evaluate(() => {
+  const a = window.__dj.attacks;
+  return { light: a.light.hit, heavy: a.heavy.hit, lightDmg: a.light.dmg, heavyDmg: a.heavy.dmg };
+});
+check('the heavy attack telegraphs for longer', timings.heavy >= timings.light * 1.8,
+  `light ${timings.light}s vs heavy ${timings.heavy}s`);
+check('the heavy attack hurts more', timings.heavyDmg >= timings.lightDmg * 2.5,
+  `x${timings.lightDmg} vs x${timings.heavyDmg}`);
+
+async function tryAttack(kind, dodge) {
+  await page.evaluate(k => {
+    const d = window.__dj;
+    d.state.hp = 100;
+    d.monster.pos.copy(d.player.pos); d.monster.pos.z += 2.0;
+    d.monster.yaw = Math.atan2(d.player.pos.x - d.monster.pos.x, d.player.pos.z - d.monster.pos.z);
+    d.forceAttack(k);
+  }, kind);
+  if (dodge) {
+    await gameWait(0.1);
+    await page.evaluate(() => { window.__dj.player.pos.z -= 6; });   // step out of reach
+  }
+  // read the damage from this one blow: waiting longer lets the quick attack
+  // land a second time and skews the comparison
+  await page.waitForFunction(() => window.__dj.monster.atk?.hasHit, null, { timeout: 90000 });
+  await gameWait(0.05);
+  return await page.evaluate(() => {
+    const d = window.__dj;
+    d.monster.cooldown = 99;          // stop it chaining into the next reading
+    return 100 - d.state.hp;
+  });
+}
+const heavyHit = await tryAttack('heavy', false);
+const heavyDodged = await tryAttack('heavy', true);
+const lightHit = await tryAttack('light', false);
+check('a landed heavy attack hurts', heavyHit > 5, `-${heavyHit.toFixed(0)} hp`);
+check('stepping out of a wind-up avoids it', heavyDodged < 1, `-${heavyDodged.toFixed(0)} hp`);
+check('the heavy hits harder than the light', heavyHit > lightHit * 2,
+  `heavy -${heavyHit.toFixed(0)} vs light -${lightHit.toFixed(0)}`);
+
 // --- taking damage
 const hpBefore = await page.evaluate(() => {
   const d = window.__dj;
   d.state.hp = 100;
   d.monster.pos.copy(d.player.pos).z += 1.2;
   d.monster.state = 'chase';
+  d.monster.cooldown = 0;      // the attack readings above park it on a long cooldown
   return d.state.hp;
 });
-await gameWait(3.0);
+await gameWait(4.0);
 const hpAfter = await page.evaluate(() => window.__dj.state.hp);
 check('the monster can hurt you', hpAfter < hpBefore, `hp ${hpBefore} -> ${Math.round(hpAfter)}`);
 
