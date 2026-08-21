@@ -145,8 +145,8 @@ addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'i' || k === 'tab') { e.preventDefault(); toggleBag(); return; }
   if (k === 'escape') { pause(); return; }
-  if (k >= '2' && k <= '8') {
-    const item = state.hotbar[+k - 2];
+  if (k >= '1' && k <= '7') {
+    const item = state.hotbar[+k - 1];
     if (item) equip(item);
     return;
   }

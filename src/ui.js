@@ -29,7 +29,7 @@ export class UI {
     for (let i = 0; i < 7; i++) {
       const el = document.createElement('div');
       el.className = 'slot';
-      el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas><span class="key">${i + 2}</span>`;
+      el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas><span class="key">${i + 1}</span>`;
       el.addEventListener('click', () => {
         const item = this.game.state.hotbar[i];
         if (item) this.game.equip(item);
@@ -46,6 +46,7 @@ export class UI {
   /* ---------------- tooltip ---------------- */
   attachTip(el, getItem) {
     el.addEventListener('mousemove', e => {
+      if (document.pointerLockElement) { this.tooltip.style.display = 'none'; return; }
       const item = getItem();
       if (!item) { this.tooltip.style.display = 'none'; return; }
       this.showTip(item, e.clientX, e.clientY);

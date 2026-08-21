@@ -29,19 +29,19 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   display:flex;align-items:center;justify-content:center;z-index:2;
 }
 .portrait-face{
-  position:relative;width:44px;height:44px;border-radius:50%;
-  background:linear-gradient(165deg,#e0aa7c,#b07a4e);
+  position:relative;width:34px;height:34px;border-radius:50%;
+  background:linear-gradient(165deg,#c08e63,#8d5f3b);
   box-shadow:inset -4px -6px 10px rgba(0,0,0,.4);
 }
 .portrait-face::before{            /* auburn hair, swept over the crown */
-  content:'';position:absolute;left:-1px;right:-1px;top:-1px;height:19px;
+  content:'';position:absolute;left:-1px;right:-1px;top:-1px;height:14px;
   border-radius:22px 22px 8px 8px;background:linear-gradient(180deg,#8a4f2b,#6d3d20);
 }
 .portrait-face::after{             /* two eyes */
-  content:'';position:absolute;left:11px;right:11px;top:23px;height:4px;
+  content:'';position:absolute;left:8px;right:8px;top:18px;height:4px;
   background:
-    radial-gradient(circle 2px at 2px 2px,#2b1c12 98%,transparent),
-    radial-gradient(circle 2px at 20px 2px,#2b1c12 98%,transparent);
+    radial-gradient(circle 1.6px at 2px 2px,#2b1c12 98%,transparent),
+    radial-gradient(circle 1.6px at 16px 2px,#2b1c12 98%,transparent);
 }
 .bars{display:flex;flex-direction:column;gap:6px;margin-left:-14px}
 .bar{
@@ -77,13 +77,14 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 }
 .float-num{
   position:absolute;transform:translate(-50%,-50%);font-weight:800;font-size:22px;
-  text-shadow:0 2px 4px rgba(0,0,0,.85);pointer-events:none;
+  pointer-events:none;-webkit-text-stroke:1px rgba(0,0,0,.9);paint-order:stroke fill;
+  text-shadow:0 2px 4px rgba(0,0,0,.85);
 }
 .float-num.dmg{color:#ffe9a8}
 .float-num.crit{color:#ffd23c;font-size:30px}
 .float-num.hurt{color:#ff6b6b}
-.float-num.xp{color:#d59bff;font-size:18px}
-.float-num.loot{color:#9ef07a;font-size:18px}
+.float-num.xp{color:#b46bf0;font-size:18px}
+.float-num.loot{color:#6fd44a;font-size:18px}
 
 /* toast */
 #toast{
@@ -101,10 +102,10 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.04);
   pointer-events:auto;
 }
-.dock-item{display:flex;align-items:center;gap:12px;padding-right:14px;border-right:2px solid #2a2a2a;min-width:330px}
+.dock-item{display:flex;align-items:center;gap:12px;padding-right:14px;border-right:2px solid #2a2a2a;min-width:250px}
 .dock-text{display:flex;flex-direction:column;gap:2px}
-.item-name{font-size:21px;font-weight:700;text-shadow:0 2px 3px rgba(0,0,0,.8)}
-.item-stats{font-size:15px;color:#e6e2d6;line-height:1.25;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+.item-name{font-size:21px;font-weight:700;white-space:nowrap;text-shadow:0 2px 3px rgba(0,0,0,.8)}
+.item-stats{font-size:15px;color:#e6e2d6;line-height:1.25;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8)}
 .dock-right{display:flex;flex-direction:column;gap:8px;justify-content:space-between}
 .hotbar{display:flex;gap:8px}
 
@@ -117,13 +118,13 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .slot-big{width:72px;height:72px;border-color:#4a4a4a}
 .slot .icon{width:100%;height:100%;image-rendering:auto}
 .slot .key{position:absolute;right:3px;bottom:1px;font-size:11px;color:#8d8d8d}
-.slot.filled{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 45%, #2a2a2a);box-shadow:inset 0 0 12px rgba(0,0,0,.75)}
+.slot.filled{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 20%, #2a2a2a);box-shadow:inset 0 0 12px rgba(0,0,0,.75)}
 .slot.selected{outline:2px solid #ffd88a;outline-offset:1px}
 .slot:hover{border-color:#6d6d6d}
 
 .xp-row{display:flex;align-items:center;gap:10px}
 .xp-bar{
-  flex:1;height:14px;background:#0b0b0b;border:2px solid #1a1a1a;border-radius:3px;
+  flex:1;height:14px;background:#2a1040;border:2px solid #3d1a5c;border-radius:3px;
   overflow:hidden;box-shadow:inset 0 0 8px rgba(0,0,0,.9);
 }
 .xp-bar .fill{height:100%;width:0;background:linear-gradient(180deg,#c97bff,var(--xp) 55%,var(--xp-dark));transition:width .25s}
@@ -131,8 +132,9 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 /* ---------- inventory ---------- */
 .panel{
-  position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-  width:min(880px,92vw);background:rgba(14,14,14,.95);
+  position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
+  width:min(880px,92vw);max-height:calc(100vh - 190px);display:flex;flex-direction:column;
+  background:rgba(14,14,14,.95);
   border:2px solid #3a3a3a;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);
   pointer-events:auto;z-index:5;
 }
@@ -141,7 +143,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .panel-head h2{font-family:Georgia,serif;font-size:26px;font-variant:small-caps;font-weight:700}
 .panel-head button{background:#222;border:2px solid #3a3a3a;color:#ddd;width:34px;height:34px;border-radius:6px;cursor:pointer;font-size:16px}
 .panel-head button:hover{background:#333}
-.panel-body{display:flex;gap:20px;padding:18px}
+.panel-body{display:flex;gap:20px;padding:18px;overflow:auto}
 .col-label{font-size:14px;color:#b9b4a6;margin-bottom:8px;font-weight:600}
 .col-label .dim{color:#6f6b61;font-weight:400}
 .equip-col{width:250px}
