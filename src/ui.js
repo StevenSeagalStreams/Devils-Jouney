@@ -130,6 +130,8 @@ export class UI {
   }
 
   renderBag() {
+    // slots are rebuilt below, so any hovered slot never fires mouseleave
+    this.tooltip.style.display = 'none';
     const bag = this.game.state.bag;
     this.bag.innerHTML = '';
     for (let i = 0; i < Math.max(18, bag.length); i++) {
@@ -188,9 +190,11 @@ export class UI {
     const el = document.createElement('div');
     el.className = `float-num ${kind}`;
     el.textContent = text;
-    el.style.left = Math.max(70, Math.min(window.innerWidth - 70, screen.x)) + 'px';
     el.style.top = Math.max(20, Math.min(window.innerHeight - 20, screen.y)) + 'px';
+    el.style.left = screen.x + 'px';
     this.worldUI.appendChild(el);
+    const pad = el.offsetWidth / 2 + 8;
+    el.style.left = Math.max(pad, Math.min(window.innerWidth - pad, screen.x)) + 'px';
     setTimeout(() => el.remove(), 1150);
   }
 

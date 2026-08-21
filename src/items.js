@@ -84,7 +84,7 @@ export function drawItemIcon(canvas, item) {
   if (!item) return;
 
   const grd = g.createRadialGradient(w / 2, h * 0.42, 4, w / 2, h / 2, w * 0.62);
-  grd.addColorStop(0, hexA(item.color, 0.12));
+  grd.addColorStop(0, hexA(item.color, 0.08));
   grd.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = grd;
   g.fillRect(0, 0, w, h);
