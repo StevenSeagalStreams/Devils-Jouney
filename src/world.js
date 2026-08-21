@@ -88,9 +88,9 @@ function makeClouds(rng) {
   for (let i = 0; i < count; i++) {
     const s = new THREE.Sprite(mat.clone());
     const a = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.35;
-    const r = 150 + rng() * 150;
+    const r = 200 + rng() * 170;
     const scale = 42 + rng() * 58;
-    s.position.set(Math.cos(a) * r, 52 + rng() * 38, Math.sin(a) * r);
+    s.position.set(Math.cos(a) * r, 34 + rng() * 26, Math.sin(a) * r);
     s.scale.set(scale, scale * 0.55, 1);
     s.material.opacity = 0.65 + rng() * 0.3;
     s.userData.drift = 0.35 + rng() * 0.5;
@@ -243,7 +243,7 @@ export function createWorld(scene) {
   const treeSpots = [];
   for (let i = 0; i < 95; i++) {
     const a = rng() * Math.PI * 2;
-    const r = 16 + rng() * 160;
+    const r = 24 + rng() * 150;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     const t = makeTree(rng);
     t.position.set(x, heightAt(x, z), z);
