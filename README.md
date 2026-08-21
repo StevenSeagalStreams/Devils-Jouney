@@ -3,7 +3,7 @@
 A tiny third-person action-RPG demo built with plain [three.js](https://threejs.org/) —
 no build step, no bundler, no install. Kill the monster, pick up better gear, level up.
 
-![screenshot](shots/08-back.png)
+![screenshot](docs/screenshot-gameplay.png)
 
 ## Play it
 
@@ -59,3 +59,8 @@ npx http-server -p 8099 -c-1 . &
 node tools/playtest.mjs            # asserts movement, combat, loot, levelling
 node tools/shot.mjs shots/x.png    # renders a frame to a png
 ```
+
+`tools/shot.mjs` takes a scenario as its second argument — `start`, `menu`,
+`combat`, `walk`, `inventory`, `closeup:<deg>` or `walkclose:<deg>` — and
+honours `SHOT_W` / `SHOT_H` for the viewport, which is how the HUD was checked
+down to 880x620.

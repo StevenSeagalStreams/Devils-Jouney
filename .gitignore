@@ -1,3 +1,5 @@
 node_modules/
 .DS_Store
-shots/rev-*.png
+
+# working screenshots from the review loop; keep the curated ones in docs/
+shots/
