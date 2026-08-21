@@ -242,7 +242,7 @@ function screenOf(v3, yOffset = 0) {
   return {
     x: (tmpV.x * 0.5 + 0.5) * innerWidth,
     y: (-tmpV.y * 0.5 + 0.5) * innerHeight,
-    visible: tmpV.z < 1,
+    visible: tmpV.z < 1 && Math.abs(tmpV.x) <= 1 && Math.abs(tmpV.y) <= 1,
   };
 }
 
@@ -581,7 +581,8 @@ function frame() {
   if (!monster.dead) {
     const s = screenOf(monster.pos, 1.85);
     ui.updateEnemyBar(monster.id, {
-      x: s.x, y: s.y, visible: s.visible,
+      x: s.x, y: s.y,
+      visible: s.visible && camera.position.distanceTo(monster.obj.position) < 45,
       pct: monster.hp / monster.maxHp,
       name: monster.name,
     });
@@ -629,6 +630,8 @@ const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
 starter.stats = { skade: 14, smidighed: 6 };
 starter.name = 'Normal Sværd 1';
 game.equip(starter);
+state.hp = totals().maxHp;
+state.stamina = totals().maxStamina;
 ui.renderAll();
 
 // pose the world before the player presses Spil

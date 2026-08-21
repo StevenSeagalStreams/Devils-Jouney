@@ -15,7 +15,7 @@ export class UI {
 
     this.vignette = document.createElement('div');
     this.vignette.id = 'damage-vignette';
-    $('#hud').appendChild(this.vignette);
+    $('#hud').prepend(this.vignette);
 
     this.enemyBars = new Map();
     this.buildHotbar();
@@ -116,7 +116,6 @@ export class UI {
     slot.classList.toggle('filled', !!w);
     slot.style.setProperty('--rare', w ? w.color : '#8a8a8a');
     $('#equipped-name').textContent = w ? w.name : 'Ingen våben';
-    $('#equipped-name').style.color = w ? w.color : '#bbb';
     $('#equipped-stats').innerHTML = w ? statLines(w).map(s => `<div>${s}</div>`).join('') : '<div>bare næver</div>';
   }
 

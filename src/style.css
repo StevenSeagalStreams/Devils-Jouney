@@ -1,7 +1,7 @@
 :root{
   --frame:#141414;
   --frame-edge:#3b3b3b;
-  --panel:rgba(18,18,18,.86);
+  --panel:rgba(20,20,22,.95);
   --hp:#d61f1f;
   --hp-dark:#8d1010;
   --sta:#f0a81c;
@@ -18,17 +18,31 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 /* ---------- HUD ---------- */
 #hud{position:absolute;inset:0;pointer-events:none}
-#world-ui{position:absolute;inset:0;overflow:hidden}
+#world-ui{position:absolute;inset:0;overflow:hidden;z-index:1}
 
 /* vitals */
-.vitals{position:absolute;top:22px;left:0;display:flex;align-items:center;gap:0}
+.vitals{z-index:2;position:absolute;top:22px;left:0;display:flex;align-items:center;gap:0}
 .portrait{
-  width:74px;height:74px;border-radius:50%;margin-left:-26px;
+  width:74px;height:74px;border-radius:50%;margin-left:-37px;
   background:radial-gradient(circle at 35% 30%,#4a4a4a,#111);
   border:3px solid #0d0d0d;box-shadow:0 2px 6px rgba(0,0,0,.55), inset 0 0 12px rgba(0,0,0,.8);
   display:flex;align-items:center;justify-content:center;z-index:2;
 }
-.portrait-face{width:42px;height:42px;border-radius:50%;background:linear-gradient(160deg,#c98d63,#7d4d2c);box-shadow:inset -4px -6px 10px rgba(0,0,0,.45)}
+.portrait-face{
+  position:relative;width:44px;height:44px;border-radius:50%;
+  background:linear-gradient(165deg,#e0aa7c,#b07a4e);
+  box-shadow:inset -4px -6px 10px rgba(0,0,0,.4);
+}
+.portrait-face::before{            /* auburn hair, swept over the crown */
+  content:'';position:absolute;left:-1px;right:-1px;top:-1px;height:19px;
+  border-radius:22px 22px 8px 8px;background:linear-gradient(180deg,#8a4f2b,#6d3d20);
+}
+.portrait-face::after{             /* two eyes */
+  content:'';position:absolute;left:11px;right:11px;top:23px;height:4px;
+  background:
+    radial-gradient(circle 2px at 2px 2px,#2b1c12 98%,transparent),
+    radial-gradient(circle 2px at 20px 2px,#2b1c12 98%,transparent);
+}
 .bars{display:flex;flex-direction:column;gap:6px;margin-left:-14px}
 .bar{
   width:440px;height:26px;background:#0b0b0b;
@@ -38,12 +52,12 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 }
 .bar .fill{height:100%;width:100%;transition:width .18s ease-out;border-radius:1px}
 .bar-health .fill{background:linear-gradient(180deg,#ff4040,var(--hp) 45%,var(--hp-dark))}
-.bar-stamina{height:22px}
+.bar-stamina{height:22px;width:390px}
 .bar-stamina .fill{background:linear-gradient(180deg,#ffcb4d,var(--sta) 45%,var(--sta-dark))}
 
 /* title */
 .title-plate{
-  position:absolute;top:16px;right:26px;text-align:right;line-height:.95;
+  z-index:2;position:absolute;top:16px;right:26px;text-align:right;line-height:.95;
   font-family:Georgia,"Times New Roman",serif;font-weight:700;
   font-size:58px;letter-spacing:1px;font-variant:small-caps;text-transform:capitalize;
   color:#fff;text-shadow:0 3px 10px rgba(0,0,0,.55),0 1px 0 rgba(0,0,0,.35);
@@ -81,7 +95,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 /* ---------- dock ---------- */
 .dock{
-  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  z-index:2;position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
   display:flex;align-items:stretch;gap:10px;padding:10px;
   background:var(--panel);border:2px solid #2a2a2a;border-radius:10px;
   box-shadow:0 6px 18px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.04);
@@ -103,7 +117,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .slot-big{width:72px;height:72px;border-color:#4a4a4a}
 .slot .icon{width:100%;height:100%;image-rendering:auto}
 .slot .key{position:absolute;right:3px;bottom:1px;font-size:11px;color:#8d8d8d}
-.slot.filled{border-color:var(--rare,#8a8a8a);box-shadow:inset 0 0 12px rgba(0,0,0,.75),0 0 8px -2px var(--rare,#000)}
+.slot.filled{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 45%, #2a2a2a);box-shadow:inset 0 0 12px rgba(0,0,0,.75)}
 .slot.selected{outline:2px solid #ffd88a;outline-offset:1px}
 .slot:hover{border-color:#6d6d6d}
 
@@ -190,7 +204,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .float-num{animation:floatUp 1.1s ease-out forwards}
 @keyframes hitFlash{from{opacity:.55}to{opacity:0}}
 #damage-vignette{
-  position:absolute;inset:0;pointer-events:none;opacity:0;
+  position:absolute;inset:0;pointer-events:none;opacity:0;z-index:0;
   background:radial-gradient(ellipse at center,rgba(255,0,0,0) 45%,rgba(190,10,10,.75) 100%);
 }
 #damage-vignette.hit{animation:hitFlash .45s ease-out}
