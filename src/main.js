@@ -403,7 +403,7 @@ function updateMonster(dt) {
       m.hasHit = true;
       if (dist < 2.9) hurtPlayer(m.damage * (0.85 + Math.random() * 0.3));
     }
-    if (m.attackT > 1.25) { m.state = dist < 12 ? 'chase' : 'idle'; m.stateT = 0; m.attackT = -1; }
+    if (m.attackT > 1.0) { m.state = dist < 12 ? 'chase' : 'idle'; m.stateT = 0; m.attackT = -1; }
   }
 
   // never let it stand inside the player
@@ -437,8 +437,11 @@ function animateMonster(m, dt) {
     const p = THREE.MathUtils.clamp(m.attackT / 0.9, 0, 1);
     const raise = Math.sin(Math.min(p, 0.5) * Math.PI) * 2.0;
     const strike = p > 0.5 ? (p - 0.5) * 2 : 0;
-    u.armR.shoulder.rotation.x = -raise + strike * 2.4;
-    u.armL.shoulder.rotation.x = -raise * 0.4;
+    const rec = p > 0.75 ? (p - 0.75) / 0.25 : 0;
+    const k = rec * rec * (3 - 2 * rec);
+    const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
+    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(-raise + strike * 2.4, idle, k);
+    u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(-raise * 0.4, -idle, k);
   } else {
     const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
     u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, idle, dt * 6);
@@ -499,7 +502,7 @@ function updatePlayer(dt) {
 
 function animatePlayer(dt, moving, sprinting) {
   const u = player.obj.userData;
-  const amp = moving ? (sprinting ? 0.85 : 0.6) : 0.06;
+  const amp = moving ? (sprinting ? 0.7 : 0.45) : 0.06;
   const swing = Math.sin(player.walkPhase) * amp;
   u.legR.hip.rotation.x = swing;
   u.legL.hip.rotation.x = -swing;
@@ -520,16 +523,21 @@ function animatePlayer(dt, moving, sprinting) {
 
   if (player.attackTime >= 0) {
     const p = player.attackTime / player.attackDur;
-    // wind up over the shoulder, then a fast diagonal slash
+    // raise the blade high with the elbow cocked, then chop down and recover
     const wind = Math.sin(Math.min(p / 0.34, 1) * Math.PI * 0.5);
     const slash = p > 0.34 ? Math.min(1, (p - 0.34) / 0.3) : 0;
     const rec = p > 0.64 ? Math.min(1, (p - 0.64) / 0.36) : 0;
     const k = rec * rec * (3 - 2 * rec);
     const L = THREE.MathUtils.lerp;
     u.armR.shoulder.rotation.x = L(-2.1 * wind + slash * 2.6, 0.22, k);
-    u.armR.shoulder.rotation.z = L(-0.5 * wind + slash * 0.7, -0.26, k);
-    u.armR.elbow.rotation.x = L(-0.9 * wind + slash * 0.8, -0.25, k);
+    // keep the arm out from the body: at rotation.z ~ 0 the blade sweeps
+    // straight through the skirt on the way down
+    u.armR.shoulder.rotation.z = L(Math.min(-0.18, -0.5 * wind + slash * 0.7), -0.26, k);
+    u.armR.elbow.rotation.x = L(-1.5 * wind + slash * 1.4, -0.25, k);
     u.torso.rotation.y = L(-0.35 * wind + slash * 0.7, 0, k);
+    // the off hand counter-swings instead of hanging dead
+    u.armL.shoulder.rotation.x = L(0.55 * wind - slash * 0.65, 0, k);
+    u.armL.shoulder.rotation.z = 0.26;
   } else {
     // relaxed guard: sword held low and slightly out, like the concept art
     u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.5, dt * 10);
@@ -665,6 +673,8 @@ player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), play
 player.obj.rotation.y = player.yaw;
 updateCamera(1);
 frame();
+
+window.__djPose = () => animatePlayer(0.016, false, false);
 
 // expose a little of the state for automated look-tests
 window.__dj = {
