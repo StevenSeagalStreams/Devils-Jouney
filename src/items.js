@@ -2,17 +2,17 @@
    numbers so a new player can compare two swords at a glance. */
 
 export const RARITIES = [
-  { key: 'normal', name: 'Normal', color: '#b9b9b9', mult: 1.0, statCount: 2 },
-  { key: 'fin', name: 'Fin', color: '#5fd35f', mult: 1.25, statCount: 2 },
-  { key: 'sjaelden', name: 'Sjælden', color: '#4aa8ff', mult: 1.5, statCount: 3 },
-  { key: 'episk', name: 'Episk', color: '#b569ff', mult: 1.85, statCount: 3 },
-  { key: 'legendarisk', name: 'Legendarisk', color: '#ffa32e', mult: 2.3, statCount: 3 },
+  { key: 'normal', name: 'Normal', color: '#b9b9b9', mult: 1.0, statCount: 1 },
+  { key: 'fin', name: 'Fin', color: '#5fd35f', mult: 1.15, statCount: 2 },
+  { key: 'sjaelden', name: 'Sjælden', color: '#4aa8ff', mult: 1.3, statCount: 2 },
+  { key: 'episk', name: 'Episk', color: '#b569ff', mult: 1.5, statCount: 3 },
+  { key: 'legendarisk', name: 'Legendarisk', color: '#ffa32e', mult: 1.75, statCount: 3 },
 ];
 
 export const TYPES = {
-  weapon: { name: 'Sværd', slot: 'weapon', main: 'skade', base: 8 },
-  armor: { name: 'Rustning', slot: 'armor', main: 'liv', base: 10 },
-  trinket: { name: 'Amulet', slot: 'trinket', main: 'smidighed', base: 4 },
+  weapon: { name: 'Sværd', slot: 'weapon', main: 'skade', base: 5 },
+  armor: { name: 'Rustning', slot: 'armor', main: 'liv', base: 7 },
+  trinket: { name: 'Amulet', slot: 'trinket', main: 'smidighed', base: 3 },
 };
 
 export const STAT_LABEL = {
@@ -26,11 +26,11 @@ let nextId = 1;
 
 /** Rarity roll gets a little kinder as the player levels. */
 function rollRarity(level, rng, luck = 0) {
-  const r = rng() * 100 - luck - level * 1.2;
-  if (r > 96) return RARITIES[4];
-  if (r > 87) return RARITIES[3];
-  if (r > 70) return RARITIES[2];
-  if (r > 42) return RARITIES[1];
+  const r = rng() * 100 - luck - level * 0.4;
+  if (r > 99.2) return RARITIES[4];
+  if (r > 96) return RARITIES[3];
+  if (r > 89) return RARITIES[2];
+  if (r > 72) return RARITIES[1];
   return RARITIES[0];
 }
 
@@ -38,14 +38,14 @@ export function makeItem(type, level, rng = Math.random, forcedRarity = null) {
   const t = TYPES[type];
   const rarity = forcedRarity ?? rollRarity(level, rng);
   const tier = RARITIES.indexOf(rarity);
-  const scale = t.base + level * 2;
+  const scale = t.base + level * 1.2;
   const stats = {};
-  stats[t.main] = Math.max(1, Math.round(scale * rarity.mult * (0.85 + rng() * 0.3)));
+  stats[t.main] = Math.max(1, Math.round(scale * rarity.mult * (0.8 + rng() * 0.3)));
 
   const extras = ['smidighed', 'styrke', 'liv'].filter(s => s !== t.main);
   for (let i = 0; i < rarity.statCount - 1 && extras.length; i++) {
     const pick = extras.splice(Math.floor(rng() * extras.length), 1)[0];
-    stats[pick] = Math.max(1, Math.round((2 + level * 0.9) * rarity.mult * (0.7 + rng() * 0.6)));
+    stats[pick] = Math.max(1, Math.round((1 + level * 0.45) * rarity.mult * (0.7 + rng() * 0.5)));
   }
 
   return {

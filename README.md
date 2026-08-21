@@ -5,6 +5,10 @@ no build step, no bundler, no install. Kill the monster, pick up better gear, le
 
 ![screenshot](docs/screenshot-gameplay.png)
 
+![the mausoleum](docs/screenshot-mausoleum.png)
+
+![the crypt](docs/screenshot-crypt.png)
+
 ![the town](docs/screenshot-town.png)
 
 ![abilities](docs/screenshot-abilities.png)
@@ -36,23 +40,32 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 
 ## How it plays
 
-* One monster roams the meadow. Get close and it charges you.
-* It has two attacks, both telegraphed by a ring that grows out to the blow's
-  reach and lands exactly when the ring stops:
-  * a **quick jab** — a short wind-up, modest damage, and it keeps tracking you
-    slowly, so back off or take it;
-  * a **heavy slam** — it rears back with both arms and glows red for over a
-    second, hits for more than three times as much, but commits to the
-    direction it started in, so you can side-step it.
-* Either way the blow only lands if you are still inside the ring and in front
-  of it when it connects. Miss it and the monster is wide open through its
-  recovery — that is your window to swing back.
-* Hitting it costs a little stamina; killing it gives xp and drops one item.
-* Walk over the item to pick it up. If it is better than what you wear, you put
-  it on automatically — no menu digging required.
-* Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`), and
-  rarity is just a colour: grey → green → blue → purple → orange.
+* The meadow is peaceful. The boars grazing there will not touch you — hit one
+  and it turns on you until it loses interest, so every fight up top is one you
+  picked.
+* Real monsters live under the mausoleum out west. Stand at its doorway, press
+  `E`, and you are in the crypt.
+* Killing anything gives xp and gold, and usually drops one item.
+* Walk over an item to pick it up. If it beats what you wear, you put it on
+  automatically — no menu digging.
+* Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`),
+  and rarity is just a colour: grey → green → blue → purple → orange. Most of
+  what drops is plain; the good stuff is meant to be a find.
 * Fill the purple bar and you level up: more life, more damage, full heal.
+
+### The crypt
+
+Three kinds of thing live down there, and each wants to be fought differently:
+
+* **Skovtrold** — the brute you started the game with. A quick jab that tracks
+  you, and a heavy slam it commits to, which you can side-step.
+* **Knoglebueskytte** — an archer. It backs away when you close in and looses
+  arrows that travel, so keep moving and shut the distance.
+* **Skjoldvagt** — a shield guard. Anything you swing at its face barely
+  scratches it; get around behind and it folds.
+
+Every wind-up draws a ring on the floor that grows out to that blow's reach and
+lands when the ring stops, so the fight is about reading and reacting.
 
 ### Abilities
 
@@ -94,6 +107,8 @@ src/characters.js   hero, monster and weapon meshes (built from primitives)
 src/items.js        loot generation and canvas item icons
 src/town.js         the town: cottages, stalls, fence and the safe zone
 src/abilities.js    the eight abilities, their scaling and their icons
+src/monsters.js     one table describing every creature and how it fights
+src/dungeon.js      the mausoleum above ground and the crypt below
 src/ui.js           HUD, bag, tooltips, floating numbers
 tools/shot.mjs      headless screenshot helper
 tools/playtest.mjs  headless play-through with assertions

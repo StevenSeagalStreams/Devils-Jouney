@@ -390,3 +390,291 @@ export function createNpcModel(kind = 'healer') {
   root.userData = { kind, bob: Math.random() * Math.PI * 2 };
   return root;
 }
+
+/* ------------------------------------------------------------------ *
+ *  Wildlife and dungeon dwellers                                       *
+ * ------------------------------------------------------------------ */
+
+/** Boar: harmless until you hit it, then it gores you. */
+export function createBoarModel() {
+  const hide = flat('#6b4a33');
+  const dark = flat('#4a3120');
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 0.62;
+  root.add(body);
+
+  const trunk = box(0.62, 0.56, 1.06, hide);
+  body.add(trunk);
+  const rump = box(0.5, 0.46, 0.3, dark);
+  rump.position.set(0, -0.02, -0.6);
+  body.add(rump);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, -0.02, 0.58);
+  body.add(headPivot);
+  const head = box(0.42, 0.4, 0.44, hide);
+  headPivot.add(head);
+  const snout = box(0.24, 0.2, 0.24, dark);
+  snout.position.set(0, -0.08, 0.3);
+  headPivot.add(snout);
+  for (const sgn of [-1, 1]) {
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.2, 5), flat('#e8e2d2'));
+    tusk.position.set(0.1 * sgn, -0.04, 0.36);
+    tusk.rotation.set(-0.5, 0, 0.2 * sgn);
+    tusk.castShadow = true;
+    headPivot.add(tusk);
+    const ear = box(0.1, 0.16, 0.06, dark);
+    ear.position.set(0.17 * sgn, 0.2, 0.02);
+    headPivot.add(ear);
+    const eye = sphere(0.032, new THREE.MeshBasicMaterial({ color: '#2b1c12' }), 7);
+    eye.position.set(0.13 * sgn, 0.06, 0.21);
+    headPivot.add(eye);
+  }
+  // bristles along the spine
+  for (let i = 0; i < 5; i++) {
+    const b = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 4), dark);
+    b.position.set(0, 0.32, 0.3 - i * 0.18);
+    b.castShadow = true;
+    body.add(b);
+  }
+
+  function leg(sx, sz) {
+    const hip = new THREE.Group();
+    hip.position.set(0.24 * sx, -0.24, 0.34 * sz);
+    body.add(hip);
+    const upper = caps(0.085, 0.07, 0.32, hide, 6);
+    upper.position.y = -0.16;
+    hip.add(upper);
+    const knee = new THREE.Group();
+    knee.position.y = -0.3;
+    hip.add(knee);
+    const hoof = box(0.14, 0.14, 0.16, dark);
+    hoof.position.y = -0.07;
+    knee.add(hoof);
+    return { hip, knee, foot: hoof, footHalf: 0.07 };
+  }
+  const legR = leg(-1, 1), legL = leg(1, 1);
+  const backR = leg(-1, -1), backL = leg(1, -1);
+
+  root.userData = { body, lean: body, headPivot, legR, legL, backR, backL, armR: null, armL: null };
+  return root;
+}
+
+/** Skeleton archer: keeps its distance and looses arrows. */
+export function createArcherModel() {
+  const bone = flat('#ded6c2');
+  const dark = flat('#6b6250');
+  const cloth = flat('#4a3b58');
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 0.92;
+  root.add(body);
+  const lean = new THREE.Group();
+  body.add(lean);
+
+  const ribs = box(0.36, 0.5, 0.24, bone);
+  ribs.position.y = 0.16;
+  lean.add(ribs);
+  for (let i = 0; i < 3; i++) {
+    const r = box(0.42, 0.05, 0.28, dark);
+    r.position.y = 0.3 - i * 0.13;
+    lean.add(r);
+  }
+  const hipBox = box(0.32, 0.2, 0.22, bone);
+  hipBox.position.y = -0.2;
+  body.add(hipBox);
+  const cape = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.34, 0.6, 8, 1, true), cloth);
+  cape.material.side = THREE.DoubleSide;
+  cape.position.set(0, 0.02, -0.1);
+  cape.castShadow = true;
+  lean.add(cape);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 0.52, 0);
+  lean.add(headPivot);
+  const skull = box(0.26, 0.26, 0.26, bone);
+  headPivot.add(skull);
+  const jaw = box(0.2, 0.08, 0.2, dark);
+  jaw.position.set(0, -0.16, 0.02);
+  headPivot.add(jaw);
+  for (const sgn of [-1, 1]) {
+    const eye = sphere(0.036, new THREE.MeshBasicMaterial({ color: '#8ef0ff' }), 7);
+    eye.position.set(0.06 * sgn, 0.02, 0.13);
+    headPivot.add(eye);
+  }
+
+  function arm(side) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(0.24 * side, 0.32, 0);
+    lean.add(shoulder);
+    const upper = caps(0.055, 0.05, 0.34, bone, 6);
+    upper.position.y = -0.17;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.34;
+    shoulder.add(elbow);
+    const fore = caps(0.05, 0.045, 0.32, bone, 6);
+    fore.position.y = -0.16;
+    elbow.add(fore);
+    const claw = new THREE.Group();
+    claw.position.y = -0.33;
+    elbow.add(claw);
+    return { shoulder, elbow, claw };
+  }
+  const armR = arm(-1), armL = arm(1);
+
+  // the bow rides in the off hand
+  const bow = new THREE.Group();
+  const limbMat = flat('#7a5433');
+  for (const sgn of [-1, 1]) {
+    const limb = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.028, 5, 10, Math.PI * 0.55), limbMat);
+    limb.rotation.set(Math.PI / 2, 0, sgn > 0 ? -0.5 : Math.PI + 0.5);
+    limb.castShadow = true;
+    bow.add(limb);
+  }
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.66, 4), flat('#e8e2d2'));
+  bow.add(string);
+  bow.position.set(0, -0.06, 0.1);
+  bow.rotation.z = Math.PI / 2;
+  armL.claw.add(bow);
+
+  function leg(side) {
+    const hip = new THREE.Group();
+    hip.position.set(0.12 * side, -0.28, 0);
+    body.add(hip);
+    const thigh = caps(0.065, 0.055, 0.34, bone, 6);
+    thigh.position.y = -0.17;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.34;
+    hip.add(knee);
+    const shin = caps(0.055, 0.05, 0.3, bone, 6);
+    shin.position.y = -0.15;
+    knee.add(shin);
+    const foot = box(0.14, 0.09, 0.24, dark);
+    foot.position.set(0, -0.32, 0.05);
+    knee.add(foot);
+    return { hip, knee, foot, footHalf: 0.045 };
+  }
+  const legR = leg(-1), legL = leg(1);
+
+  root.userData = { body, lean, headPivot, armR, armL, legR, legL, bow };
+  return root;
+}
+
+/** Shield guard: a slab of a thing that blocks whatever it faces. */
+export function createGuardModel() {
+  const plate = flat('#6f7681');
+  const dark = flat('#464c55');
+  const trim = flat('#a8794a');
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 1.02;
+  root.add(body);
+  const lean = new THREE.Group();
+  lean.rotation.x = 0.12;
+  body.add(lean);
+
+  const torso = box(0.66, 0.66, 0.46, plate);
+  torso.position.y = 0.14;
+  lean.add(torso);
+  const belt = box(0.7, 0.12, 0.5, trim);
+  belt.position.y = -0.18;
+  lean.add(belt);
+  const hipBox = box(0.56, 0.28, 0.42, dark);
+  hipBox.position.y = -0.32;
+  body.add(hipBox);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 0.56, 0.02);
+  lean.add(headPivot);
+  const helm = box(0.34, 0.34, 0.36, plate);
+  headPivot.add(helm);
+  const crest = box(0.08, 0.14, 0.4, trim);
+  crest.position.y = 0.22;
+  headPivot.add(crest);
+  const visor = box(0.3, 0.08, 0.06, dark);
+  visor.position.set(0, 0.0, 0.18);
+  headPivot.add(visor);
+  for (const sgn of [-1, 1]) {
+    const eye = sphere(0.028, new THREE.MeshBasicMaterial({ color: '#ff6a3c' }), 7);
+    eye.position.set(0.07 * sgn, 0.0, 0.2);
+    headPivot.add(eye);
+  }
+
+  function arm(side) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(0.4 * side, 0.3, 0);
+    lean.add(shoulder);
+    const pauldron = sphere(0.19, plate, 8);
+    pauldron.scale.set(1.1, 0.85, 1.05);
+    shoulder.add(pauldron);
+    const upper = caps(0.11, 0.1, 0.36, dark, 7);
+    upper.position.y = -0.22;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.4;
+    shoulder.add(elbow);
+    const fore = caps(0.1, 0.09, 0.34, plate, 7);
+    fore.position.y = -0.17;
+    elbow.add(fore);
+    const claw = new THREE.Group();
+    claw.position.y = -0.36;
+    elbow.add(claw);
+    return { shoulder, elbow, claw };
+  }
+  const armR = arm(-1), armL = arm(1);
+
+  // a big slab shield on the off arm, held across the front
+  const shield = new THREE.Group();
+  const face = box(0.86, 1.12, 0.12, plate);
+  shield.add(face);
+  const boss = sphere(0.16, trim, 9);
+  boss.scale.set(1, 1, 0.6);
+  boss.position.z = 0.1;
+  shield.add(boss);
+  const edge = box(0.94, 0.1, 0.16, trim);
+  edge.position.y = 0.56;
+  shield.add(edge);
+  const edge2 = box(0.94, 0.1, 0.16, trim);
+  edge2.position.y = -0.56;
+  shield.add(edge2);
+  shield.position.set(0.16, -0.2, 0.34);
+  shield.rotation.set(0.1, 0.25, 0);
+  armL.claw.add(shield);
+
+  const mace = new THREE.Group();
+  const haft = caps(0.05, 0.05, 0.7, flat('#5d3d24'), 6);
+  haft.position.y = -0.3;
+  mace.add(haft);
+  const headBall = new THREE.Mesh(new THREE.DodecahedronGeometry(0.17, 0), dark);
+  headBall.position.y = -0.68;
+  headBall.castShadow = true;
+  mace.add(headBall);
+  mace.rotation.x = 0.2;
+  armR.claw.add(mace);
+
+  function leg(side) {
+    const hip = new THREE.Group();
+    hip.position.set(0.2 * side, -0.38, 0);
+    body.add(hip);
+    const thigh = caps(0.14, 0.12, 0.36, dark, 7);
+    thigh.position.y = -0.18;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.36;
+    hip.add(knee);
+    const shin = caps(0.12, 0.1, 0.32, plate, 7);
+    shin.position.y = -0.16;
+    knee.add(shin);
+    const foot = box(0.24, 0.14, 0.34, dark);
+    foot.position.set(0, -0.3, 0.06);
+    knee.add(foot);
+    return { hip, knee, foot, footHalf: 0.07 };
+  }
+  const legR = leg(-1), legL = leg(1);
+
+  root.userData = { body, lean, headPivot, armR, armL, legR, legL, shield };
+  return root;
+}

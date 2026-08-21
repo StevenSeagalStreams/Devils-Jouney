@@ -227,18 +227,22 @@ export function createWorld(scene) {
   let seed = 20260821;
   const rng = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
 
+  // everything above ground lives under one root so the crypt can swap it out
+  const root = new THREE.Group();
+  scene.add(root);
+
   scene.background = new THREE.Color('#8dc5ef');
   scene.fog = new THREE.Fog('#c3e0f5', 150, 380);
 
-  scene.add(skyDome());
+  root.add(skyDome());
   const clouds = makeClouds(rng);
-  scene.add(clouds);
-  scene.add(makeDistantHills(rng));
-  scene.add(makeTerrain());
+  root.add(clouds);
+  root.add(makeDistantHills(rng));
+  root.add(makeTerrain());
 
   // lighting: bright midday sun + sky bounce, matching the concept art
   const hemi = new THREE.HemisphereLight('#cfe7ff', '#5f8c3a', 1.05);
-  scene.add(hemi);
+  root.add(hemi);
   const sun = new THREE.DirectionalLight('#fff6df', 1.55);
   sun.position.set(34, 96, 22);
   sun.castShadow = true;
@@ -250,9 +254,9 @@ export function createWorld(scene) {
   sun.shadow.camera.top = S; sun.shadow.camera.bottom = -S;
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.03;
-  scene.add(sun);
-  scene.add(sun.target);
-  scene.add(new THREE.AmbientLight('#ffffff', 0.25));
+  root.add(sun);
+  root.add(sun.target);
+  root.add(new THREE.AmbientLight('#ffffff', 0.25));
 
   // props
   const props = new THREE.Group();
@@ -279,9 +283,10 @@ export function createWorld(scene) {
     rock.position.set(x, heightAt(x, z) + 0.1, z);
     props.add(rock);
   }
-  scene.add(props);
+  root.add(props);
 
   return {
+    root,
     sun,
     obstacles: treeSpots,
     update(dt) { clouds.userData.animate(dt); },

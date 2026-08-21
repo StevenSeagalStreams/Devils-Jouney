@@ -3,6 +3,8 @@ import { createWorld, heightAt, TOWN, townDistance } from './world.js';
 import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel } from './characters.js';
 import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
+import { KINDS, statsFor } from './monsters.js';
+import { createMausoleum, createDungeon, clampToRooms, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
 import { ABILITIES, abilityPower, abilityScale, unlockedAt } from './abilities.js';
 import { UI } from './ui.js';
 
@@ -57,12 +59,61 @@ function totals() {
   const rage = state.buffs.rage > 0 ? 1.6 : 1;
   return {
     maxHp: BASE.hp + liv + (lvl - 1) * 12,
-    damage: Math.round((BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 2) * rage),
+    damage: Math.round((BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 3) * rage),
     smidighed, styrke, liv, tier,
     maxStamina: BASE.stamina + smidighed * 1.5,
     speed: BASE.speed + smidighed * 0.03,
     attackSpeed: 1 + smidighed * 0.008,
   };
+}
+
+/* --------------------------- zones --------------------------- */
+const mausoleum = createMausoleum();
+world.root.add(mausoleum.group);
+const dungeon = createDungeon();
+dungeon.group.visible = false;
+scene.add(dungeon.group);
+
+let zone = 'overworld';
+
+/** Ground height for whichever zone we are standing in. */
+function groundY(x, z) {
+  return zone === 'dungeon' ? 0 : heightAt(x, z);
+}
+
+const ZONES = {
+  overworld: {
+    fog: ['#c3e0f5', 150, 380], bg: '#8dc5ef',
+    enter() {
+      world.root.visible = true;
+      dungeon.group.visible = false;
+      player.pos.copy(mausoleum.door);
+      player.pos.z -= 2.2;
+      spawnOverworld();
+    },
+  },
+  dungeon: {
+    fog: ['#14111a', 14, 60], bg: '#0b0a10',
+    enter() {
+      world.root.visible = false;
+      dungeon.group.visible = true;
+      player.pos.copy(dungeon.spawnSpot);
+      spawnDungeon();
+    },
+  },
+};
+
+function setZone(next) {
+  zone = next;
+  const z = ZONES[next];
+  clearMonsters();
+  arrows.length = 0;
+  for (const d of drops.splice(0)) scene.remove(d.obj);
+  scene.background = new THREE.Color(z.bg);
+  scene.fog = new THREE.Fog(z.fog[0], z.fog[1], z.fog[2]);
+  z.enter();
+  camSnap = true;
+  ui.toast(next === 'dungeon' ? 'Gravkammeret' : 'Engen', 1800);
 }
 
 /* --------------------------- town --------------------------- */
@@ -96,12 +147,23 @@ function updateNpcs(dt) {
     if (d < bestD) { bestD = d; best = npc; }
   }
   nearNpc = best;
-  if (best && !ui.shopOpen && !ui.inventoryOpen) {
-    ui.showPrompt(`<b>E</b> — tal med ${best.name} for at ${best.hint}`);
+
+  // the way down, and the way back up
+  nearDoor = null;
+  if (zone === 'overworld') {
+    const d = Math.hypot(player.pos.x - mausoleum.door.x, player.pos.z - mausoleum.door.z);
+    if (d < 2.6) nearDoor = { to: 'dungeon', label: 'gå ned i gravkammeret' };
   } else {
-    ui.hidePrompt();
+    const d = Math.hypot(player.pos.x - dungeon.exitSpot.x, player.pos.z - dungeon.exitSpot.z);
+    if (d < 2.6) nearDoor = { to: 'overworld', label: 'gå op i dagslyset' };
   }
+
+  if (ui.shopOpen || ui.inventoryOpen) ui.hidePrompt();
+  else if (best) ui.showPrompt(`<b>E</b> — tal med ${best.name} for at ${best.hint}`);
+  else if (nearDoor) ui.showPrompt(`<b>E</b> — ${nearDoor.label}`);
+  else ui.hidePrompt();
 }
+let nearDoor = null;
 
 /* --------------------------- player --------------------------- */
 const player = {
@@ -117,83 +179,333 @@ const player = {
 };
 scene.add(player.obj);
 
-/* --------------------------- monster --------------------------- */
-/* Two attacks with readable tells. `hit` is when the damage lands, so the whole
-   windup is reaction time; `track` is how fast it may keep re-aiming at you
-   while winding up — the heavy commits and can be side-stepped. */
-const ATTACKS = {
-  light: { kind: 'light', hit: 0.62, recover: 0.45, range: 2.7, dmg: 0.7, cooldown: 0.8, track: 2.6, tell: '#ffb02e' },
-  heavy: { kind: 'heavy', hit: 1.25, recover: 0.9, range: 3.4, dmg: 2.4, cooldown: 1.6, track: 0, tell: '#ff3b1f' },
-};
-
-// one shared ground ring: it grows to the attack's reach exactly as the blow lands
-const telegraph = new THREE.Mesh(
-  new THREE.RingGeometry(0.82, 1.0, 40),
-  new THREE.MeshBasicMaterial({ color: '#ff5a3c', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
-telegraph.rotation.x = -Math.PI / 2;
-telegraph.visible = false;
-telegraph.renderOrder = 2;
-scene.add(telegraph);
-
-function startAttack(m, kind) {
-  const a = ATTACKS[kind];
-  m.atk = { ...a, t: 0, hasHit: false };
-  m.state = 'attack';
-  m.stateT = 0;
-  m.lastHeavy = kind === 'heavy';
-}
-
-function updateTelegraph(m) {
-  const a = m.state === 'attack' ? m.atk : null;
-  if (!a || a.hasHit) { telegraph.visible = false; return; }
-  const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
-  telegraph.visible = true;
-  telegraph.position.set(m.pos.x, heightAt(m.pos.x, m.pos.z) + 0.06, m.pos.z);
-  const s = (a.range * p) / 1.0;
-  telegraph.scale.setScalar(Math.max(0.05, s));
-  telegraph.material.color.set(a.tell);
-  telegraph.material.opacity = 0.25 + 0.6 * p;
-}
+/* --------------------------- creatures --------------------------- */
+const monsters = [];
 let monsterSeq = 0;
-function spawnMonster(level) {
+
+// one telegraph ring per creature that is winding up
+const telegraphs = new Map();
+function telegraphFor(id) {
+  let t = telegraphs.get(id);
+  if (!t) {
+    t = new THREE.Mesh(
+      new THREE.RingGeometry(0.82, 1.0, 40),
+      new THREE.MeshBasicMaterial({ color: '#ff5a3c', transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+    t.rotation.x = -Math.PI / 2;
+    t.renderOrder = 2;
+    scene.add(t);
+    telegraphs.set(id, t);
+  }
+  return t;
+}
+function dropTelegraph(id) {
+  const t = telegraphs.get(id);
+  if (t) { scene.remove(t); t.geometry.dispose(); t.material.dispose(); telegraphs.delete(id); }
+}
+
+function spawnMonster(kindId, level, pos) {
+  const k = KINDS[kindId];
+  const base = statsFor(kindId, level);
   const m = {
     id: ++monsterSeq,
-    obj: createMonsterModel((level - 1) % 3),
-    pos: new THREE.Vector3(0, 0, -8),
-    yaw: 0,
+    kindId,
+    kind: k,
+    obj: k.model(level),
+    pos: pos.clone(),
+    yaw: Math.PI,
     level,
-    maxHp: 34 + (level - 1) * 16,
-    hp: 34 + (level - 1) * 16,
-    damage: 6 + (level - 1) * 2.5,
-    speed: 2.5,
+    ...base,
     state: 'idle',
     stateT: 0,
     atk: null,
     cooldown: 0,
     lastHeavy: false,
     hurt: 0,
+    angry: 0,            // passive creatures only fight while this is running
     walkPhase: 0,
+    home: pos.clone(),
     wander: new THREE.Vector3(),
     dead: false,
-    name: `Skovtrold ${level}`,
+    deadT: 0,
   };
-  if (monsterSeq === 1) {
-    m.pos.set(0, 0, -11);
-  } else {
-    for (let tries = 0; tries < 24; tries++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 11 + Math.random() * 7;
-      m.pos.set(player.pos.x + Math.cos(a) * r, 0, player.pos.z + Math.sin(a) * r);
-      if (townDistance(m.pos.x, m.pos.z) > TOWN.radius + 4) break;
-    }
-  }
   m.obj.position.copy(m.pos);
-  m.obj.scale.setScalar(0.88 + Math.min(level, 8) * 0.03);
+  m.obj.scale.setScalar(k.scale * (0.92 + Math.min(level, 10) * 0.012));
   scene.add(m.obj);
+  monsters.push(m);
   return m;
 }
-let monster = spawnMonster(1);
-let respawnT = -1;
+
+function clearMonsters() {
+  for (const m of monsters) { scene.remove(m.obj); dropTelegraph(m.id); ui.removeEnemyBar(m.id); }
+  monsters.length = 0;
+}
+
+/** Nearest living creature — keeps the old single-monster helpers working. */
+function nearestMonster() {
+  let best = null, bestD = Infinity;
+  for (const m of monsters) {
+    if (m.dead) continue;
+    const d = Math.hypot(m.pos.x - player.pos.x, m.pos.z - player.pos.z);
+    if (d < bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+
+function startAttack(m, kindName) {
+  const a = m.kind.attacks[kindName];
+  if (!a) return;
+  m.atk = { ...a, t: 0, hasHit: false };
+  m.state = 'attack';
+  m.stateT = 0;
+  m.lastHeavy = a.kind === 'heavy';
+}
+
+function updateTelegraph(m) {
+  const a = m.state === 'attack' ? m.atk : null;
+  if (!a || a.hasHit || m.dead) { dropTelegraph(m.id); return; }
+  const t = telegraphFor(m.id);
+  const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
+  t.visible = true;
+  t.position.set(m.pos.x, groundY(m.pos.x, m.pos.z) + 0.06, m.pos.z);
+  // a ranged shot shows a short warning ring, not its whole flight distance
+  const reach = a.projectile ? 2.2 : a.range;
+  t.scale.setScalar(Math.max(0.05, reach * p));
+  t.material.color.set(a.tell);
+  t.material.opacity = 0.25 + 0.6 * p;
+}
+
+/* ----------------------------- arrows ----------------------------- */
+const arrows = [];
+let arrowsFired = 0;
+function fireArrow(m, damage) {
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.9, 5), new THREE.MeshLambertMaterial({ color: '#c9a86a' }));
+  shaft.rotation.x = Math.PI / 2;
+  g.add(shaft);
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.22, 5), new THREE.MeshBasicMaterial({ color: '#8ef0ff' }));
+  tip.rotation.x = Math.PI / 2;
+  tip.position.z = 0.52;
+  g.add(tip);
+  const from = new THREE.Vector3(m.pos.x, groundY(m.pos.x, m.pos.z) + 1.25, m.pos.z);
+  const to = new THREE.Vector3(player.pos.x, groundY(player.pos.x, player.pos.z) + 1.0, player.pos.z);
+  const dir = to.sub(from).normalize();
+  g.position.copy(from);
+  g.lookAt(from.clone().add(dir));
+  scene.add(g);
+  arrows.push({ obj: g, dir, speed: 15, damage, life: 2.2 });
+  arrowsFired++;
+}
+
+function updateArrows(dt) {
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const a = arrows[i];
+    a.life -= dt;
+    a.obj.position.addScaledVector(a.dir, a.speed * dt);
+    const p = a.obj.position;
+    const hit = Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < 0.75
+      && Math.abs(p.y - (groundY(player.pos.x, player.pos.z) + 1.0)) < 1.2;
+    if (hit) hurtPlayer(a.damage);
+    if (hit || a.life <= 0 || p.y < groundY(p.x, p.z) - 0.2) {
+      scene.remove(a.obj);
+      arrows.splice(i, 1);
+    }
+  }
+}
+
+/* --------------------------- creature AI --------------------------- */
+function updateMonsters(dt) {
+  for (let i = monsters.length - 1; i >= 0; i--) updateMonster(monsters[i], dt, i);
+  updateArrows(dt);
+}
+
+function updateMonster(m, dt, index) {
+  m.stateT += dt;
+  m.hurt = Math.max(0, m.hurt - dt);
+  m.cooldown = Math.max(0, m.cooldown - dt);
+  if (m.angry > 0) m.angry -= dt;
+
+  if (m.dead) {
+    m.deadT += dt;
+    m.obj.rotation.x = THREE.MathUtils.lerp(m.obj.rotation.x, -Math.PI / 2.2, dt * 6);
+    m.obj.position.y = THREE.MathUtils.lerp(m.obj.position.y, groundY(m.pos.x, m.pos.z) - 0.3, dt * 4);
+    dropTelegraph(m.id);
+    if (m.deadT > 3.0) {
+      scene.remove(m.obj);
+      ui.removeEnemyBar(m.id);
+      monsters.splice(index, 1);
+      scheduleRespawn(m);
+    }
+    return;
+  }
+
+  const toPlayer = tmpV.copy(player.pos).sub(m.pos);
+  toPlayer.y = 0;
+  const dist = toPlayer.length();
+  toPlayer.normalize();
+
+  const k = m.kind;
+  const hostile = (!k.passive || m.angry > 0) && !inTown();
+  const homeDist = Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z);
+
+  if (m.state === 'idle') {
+    if (m.stateT > 2.5) {
+      m.stateT = 0;
+      const a = Math.random() * Math.PI * 2;
+      m.wander.set(Math.cos(a), 0, Math.sin(a));
+      // drift back if it has strayed far from where it started
+      if (homeDist > 8) m.wander.set(m.home.x - m.pos.x, 0, m.home.z - m.pos.z).normalize();
+    }
+    const step = m.wander.clone().multiplyScalar(0.7 * dt);
+    m.pos.add(step);
+    if (step.lengthSq() > 1e-6) m.yaw = Math.atan2(step.x, step.z);
+    m.walkPhase += dt * 3;
+    if (hostile && dist < k.sight) { m.state = 'chase'; m.stateT = 0; }
+  } else if (m.state === 'chase') {
+    m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * 6);
+    const band = k.keepAway;
+    if (band && dist < band.min) {
+      m.pos.addScaledVector(toPlayer, -m.speed * dt);          // archers give ground
+      m.walkPhase += dt * 7;
+    } else if (band && dist > band.max) {
+      m.pos.addScaledVector(toPlayer, m.speed * dt);
+      m.walkPhase += dt * 7;
+    } else if (!band) {
+      if (m.cooldown > 0 && dist < 2.4) {
+        m.pos.addScaledVector(toPlayer, -m.speed * 0.55 * dt);
+        m.walkPhase += dt * 5;
+      } else if (dist > 1.9) {
+        m.pos.addScaledVector(toPlayer, m.speed * dt);
+        m.walkPhase += dt * 8;
+      }
+    }
+    const reach = band ? band.max : 2.3;
+    if (dist < reach && m.cooldown <= 0 && hostile) startAttack(m, k.choose(m));
+    if (!hostile || dist > k.leash) { m.state = 'idle'; m.stateT = 0; }
+  } else if (m.state === 'attack') {
+    const a = m.atk;
+    a.t += dt;
+    if (a.track > 0 && !a.hasHit) {
+      m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * a.track);
+    }
+    if (!a.hasHit && a.t >= a.hit) {
+      a.hasHit = true;
+      if (a.projectile) {
+        fireArrow(m, m.damage * a.dmg);
+      } else {
+        const facing = tmpFacing.set(Math.sin(m.yaw), 0, Math.cos(m.yaw));
+        if (dist < a.range && toPlayer.dot(facing) > 0.25) {
+          hurtPlayer(m.damage * a.dmg * (0.9 + Math.random() * 0.2));
+        } else {
+          ui.floatText('forbi!', screenOf(m.pos, k.barY), 'loot');
+        }
+      }
+    }
+    if (a.t >= a.hit + a.recover) {
+      m.state = dist < k.leash ? 'chase' : 'idle';
+      m.stateT = 0;
+      m.cooldown = a.cooldown;
+    }
+  }
+
+  // the town fence turns everything away
+  const townD = townDistance(m.pos.x, m.pos.z);
+  const keepOut = TOWN.radius + 1.5;
+  if (zone === 'overworld' && townD < keepOut) {
+    const away = tmpFacing.set(m.pos.x - TOWN.x, 0, m.pos.z - TOWN.z);
+    if (away.lengthSq() < 1e-6) away.set(0, 0, -1);
+    away.normalize();
+    m.pos.set(TOWN.x + away.x * keepOut, 0, TOWN.z + away.z * keepOut);
+    if (m.state === 'attack') { m.state = 'idle'; m.stateT = 0; m.atk = null; }
+  }
+  if (m.state !== 'idle' && inTown()) { m.state = 'idle'; m.stateT = 0; m.atk = null; }
+
+  if (zone === 'dungeon') clampToRooms(m.pos);
+
+  // never stand inside the player
+  const sep = tmpV.copy(m.pos).sub(player.pos);
+  sep.y = 0;
+  const sepD = sep.length();
+  if (sepD < 1.4 && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), 1.4);
+  m.pos.y = 0;
+
+  if (zone === 'overworld') {
+    m.pos.x = THREE.MathUtils.clamp(m.pos.x, -90, 90);
+    m.pos.z = THREE.MathUtils.clamp(m.pos.z, -90, 90);
+  }
+  m.obj.position.set(m.pos.x, groundY(m.pos.x, m.pos.z), m.pos.z);
+  m.obj.rotation.y = m.yaw;
+  updateTelegraph(m);
+  animateMonster(m, dt);
+}
+
+function animateMonster(m, dt) {
+  const u = m.obj.userData;
+  const chasing = m.state === 'chase';
+  const swing = Math.sin(m.walkPhase) * (chasing ? 0.55 : 0.2);
+  u.legR.hip.rotation.x = swing;
+  u.legL.hip.rotation.x = -swing;
+  u.legR.knee.rotation.x = Math.max(0, -swing) * 0.6;
+  u.legL.knee.rotation.x = Math.max(0, swing) * 0.6;
+  const feet = [
+    { mesh: u.legR.foot, half: u.legR.footHalf },
+    { mesh: u.legL.foot, half: u.legL.footHalf },
+  ];
+  if (u.backR) {
+    u.backR.hip.rotation.x = -swing;
+    u.backL.hip.rotation.x = swing;
+    feet.push({ mesh: u.backR.foot, half: u.backR.footHalf },
+      { mesh: u.backL.foot, half: u.backL.footHalf });
+  }
+  plantFeet(m.obj, u.body, m.kindId === 'boar' ? 0.62 : m.kindId === 'archer' ? 0.92 : m.kindId === 'guard' ? 1.02 : 0.98, feet);
+  u.headPivot.rotation.x = (m.kindId === 'brute' ? -0.22 : 0) + Math.sin(m.walkPhase * 0.5) * 0.05;
+
+  const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
+  if (m.state === 'attack' && m.atk && u.armR) {
+    const a = m.atk;
+    const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
+    const post = THREE.MathUtils.clamp((a.t - a.hit) / a.recover, 0, 1);
+    const ease = post * post * (3 - 2 * post);
+    const L = THREE.MathUtils.lerp;
+    if (a.kind === 'skud') {
+      // draw the bow, then loose
+      u.armL.shoulder.rotation.x = -1.5;
+      u.armR.shoulder.rotation.x = L(-1.2 - p * 0.4, -0.2, ease);
+      u.armR.elbow.rotation.x = L(-1.4 * p, -0.2, ease);
+    } else if (a.kind === 'heavy' || a.kind === 'bash') {
+      const raise = Math.sin(p * Math.PI * 0.5) * 2.6;
+      u.armR.shoulder.rotation.x = L(-raise + ease * 3.2, idle, ease * 0.7);
+      if (a.kind === 'heavy') u.armL.shoulder.rotation.x = L(-raise + ease * 3.2, -idle, ease * 0.7);
+      if (u.lean) u.lean.rotation.x = (m.kindId === 'guard' ? 0.12 : 0.3) - 0.28 * p + 0.5 * ease;
+    } else {
+      const cock = Math.sin(p * Math.PI * 0.5) * 1.4;
+      u.armR.shoulder.rotation.x = L(-cock + ease * 2.3, idle, ease * 0.75);
+      u.armL.shoulder.rotation.x = L(cock * 0.25, -idle, ease * 0.75);
+      if (u.lean) u.lean.rotation.x = (m.kindId === 'guard' ? 0.12 : 0.3) + 0.12 * p;
+    }
+  } else if (u.armR) {
+    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, idle, dt * 6);
+    u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, -idle, dt * 6);
+    if (u.lean) u.lean.rotation.x = THREE.MathUtils.lerp(u.lean.rotation.x, m.kindId === 'guard' ? 0.12 : m.kindId === 'brute' ? 0.3 : 0, dt * 6);
+  } else if (m.kindId === 'boar' && m.state === 'attack' && m.atk) {
+    // the boar has no arms: it lunges with its head
+    const p = THREE.MathUtils.clamp(m.atk.t / m.atk.hit, 0, 1);
+    u.headPivot.rotation.x = -0.5 * p;
+  }
+
+  // hit flash wins; otherwise the body glows while a blow is winding up
+  const hurt = m.hurt > 0;
+  let r = 0, g = 0, bl = 0;
+  if (hurt) { r = 0.45; g = 0.1; bl = 0.1; }
+  else if (m.state === 'attack' && m.atk && !m.atk.hasHit) {
+    const charge = THREE.MathUtils.clamp(m.atk.t / m.atk.hit, 0, 1);
+    const big = m.atk.dmg >= 1.8;
+    r = charge * (big ? 0.45 : 0.24);
+    g = charge * (big ? 0.06 : 0.16);
+  }
+  m.obj.traverse(o => {
+    if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setRGB(r, g, bl);
+  });
+}
 
 /* --------------------------- loot on the ground --------------------------- */
 const drops = [];
@@ -213,7 +525,7 @@ function dropLoot(item, pos) {
     new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
   beam.position.y = 1.6;
   g.add(beam);
-  g.position.set(pos.x, heightAt(pos.x, pos.z) + 0.7, pos.z);
+  g.position.set(pos.x, groundY(pos.x, pos.z) + 0.7, pos.z);
   scene.add(g);
   drops.push({ item, obj: g, t: 0 });
 }
@@ -425,32 +737,76 @@ function gainXp(amount) {
   }
 }
 
-function damageMonster(amount, crit) {
-  monster.hp -= amount;
-  monster.hurt = 0.18;
-  ui.floatText(`${amount}`, screenOf(monster.pos, 1.75), crit ? 'crit' : 'dmg');
-  if (monster.hp <= 0) killMonster();
+function damageMonster(m, amount, crit) {
+  if (!m || m.dead) return;
+  // a shield guard shrugs off anything that comes at its face
+  let blocked = false;
+  if (m.kind.blockFront) {
+    const to = tmpFacing.set(player.pos.x - m.pos.x, 0, player.pos.z - m.pos.z).normalize();
+    const facing = new THREE.Vector3(Math.sin(m.yaw), 0, Math.cos(m.yaw));
+    if (to.dot(facing) > 0.35) { amount = Math.max(1, Math.round(amount * (1 - m.kind.blockFront))); blocked = true; }
+  }
+  m.hp -= amount;
+  m.hurt = 0.18;
+  // hitting a peaceful creature makes it a problem
+  if (m.kind.passive) { m.angry = 12; if (m.state === 'idle') { m.state = 'chase'; m.stateT = 0; } }
+  ui.floatText(blocked ? `blokeret ${amount}` : `${amount}`, screenOf(m.pos, m.kind.barY),
+    blocked ? 'loot' : crit ? 'crit' : 'dmg');
+  if (m.hp <= 0) killMonster(m);
 }
 
-function killMonster() {
-  monster.dead = true;
-  monster.state = 'dead';
-  monster.stateT = 0;
-  const xp = 18 + monster.level * 8;
-  gainXp(xp);
-  ui.floatText(`+${xp} xp`, screenOf(monster.pos, 2.0), 'xp');
-  const gold = 4 + monster.level * 3 + Math.floor(Math.random() * 6);
+function killMonster(m) {
+  m.dead = true;
+  m.state = 'dead';
+  m.deadT = 0;
+  gainXp(m.xp);
+  ui.floatText(`+${m.xp} xp`, screenOf(m.pos, m.kind.barY + 0.3), 'xp');
+  const gold = m.gold + Math.floor(Math.random() * 4);
   state.gold += gold;
   ui.setGold(state.gold);
-  ui.floatText(`+${gold} guld`, screenOf(monster.pos, 1.4), 'gold');
-  ui.removeEnemyBar(monster.id);
+  ui.floatText(`+${gold} guld`, screenOf(m.pos, m.kind.barY - 0.4), 'gold');
+  ui.removeEnemyBar(m.id);
 
-  // loot: always something small, sometimes a real upgrade
-  const roll = Math.random();
-  const type = roll < 0.55 ? 'weapon' : roll < 0.85 ? 'armor' : 'trinket';
-  const item = makeItem(type, Math.max(1, state.level), Math.random);
-  dropLoot(item, monster.pos);
-  respawnT = 3.5;
+  // most kills give something; the tougher the creature the better the odds
+  const chance = m.kind.passive ? 0.45 : 0.85;
+  if (Math.random() < chance) {
+    const roll = Math.random();
+    const type = roll < 0.5 ? 'weapon' : roll < 0.82 ? 'armor' : 'trinket';
+    dropLoot(makeItem(type, Math.max(1, state.level), Math.random), m.pos);
+  }
+}
+
+/** Bring the same kind back at its post after a breather. */
+const pendingSpawns = [];
+function scheduleRespawn(m) {
+  pendingSpawns.push({ kindId: m.kindId, home: m.home.clone(), t: 8 + Math.random() * 6, zone });
+}
+function updateRespawns(dt) {
+  for (let i = pendingSpawns.length - 1; i >= 0; i--) {
+    const p = pendingSpawns[i];
+    if (p.zone !== zone) { pendingSpawns.splice(i, 1); continue; }
+    p.t -= dt;
+    if (p.t <= 0) {
+      spawnMonster(p.kindId, monsterLevel(), p.home);
+      pendingSpawns.splice(i, 1);
+    }
+  }
+}
+
+function monsterLevel() {
+  return Math.max(1, state.level + (zone === 'dungeon' ? 1 : 0));
+}
+
+function spawnOverworld() {
+  // peaceful wildlife only — nothing out here starts a fight
+  const spots = [[-18, -24], [24, -18], [-34, 12], [30, 16], [8, -34], [-8, 40]];
+  for (const [x, z] of spots) {
+    spawnMonster('boar', Math.max(1, state.level), new THREE.Vector3(x, 0, z));
+  }
+}
+
+function spawnDungeon() {
+  for (const post of dungeon.posts) spawnMonster(post.kind, monsterLevel(), post.pos);
 }
 
 function playerAttack(dt) {
@@ -469,18 +825,13 @@ function playerAttack(dt) {
 
   if (!player.hasHit && p > 0.34) {
     player.hasHit = true;
-    if (!monster.dead) {
-      const to = tmpV.copy(monster.pos).sub(player.pos);
-      const dist = to.length();
-      const facing = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-      const dot = to.normalize().dot(facing);
-      if (dist < 3.0 && dot > 0.35) {
-        const crit = Math.random() < 0.12 + t.smidighed * 0.004;
-        const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
-        damageMonster(Math.max(1, Math.round(raw)), crit);
-      } else {
-        ui.floatText('svup!', screenOf(player.pos, 2.0), 'dmg');
-      }
+    const hit = monstersInRange(player.pos, 3.0, 0.35);
+    if (hit.length) {
+      const crit = Math.random() < 0.12 + t.smidighed * 0.004;
+      const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
+      for (const m of hit) damageMonster(m, Math.max(1, Math.round(raw)), crit);
+    } else {
+      ui.floatText('svup!', screenOf(player.pos, 2.0), 'dmg');
     }
   }
   if (player.attackTime > player.attackDur) player.attackTime = -1;
@@ -511,7 +862,7 @@ function ringFx(x, z, radius, color, life = 0.45) {
     new THREE.RingGeometry(0.78, 1.0, 36),
     new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(x, heightAt(x, z) + 0.08, z);
+  mesh.position.set(x, groundY(x, z) + 0.08, z);
   mesh.scale.setScalar(0.2);
   scene.add(mesh);
   fx.push({ mesh, t: 0, life, radius });
@@ -536,17 +887,19 @@ function updateFx(dt) {
   }
 }
 
-/** Every living monster in range — a list of one today, more later. */
+/** Every living creature inside a radius, optionally limited to a front arc. */
 function monstersInRange(origin, range, arc = null) {
-  if (monster.dead) return [];
-  const dx = monster.pos.x - origin.x, dz = monster.pos.z - origin.z;
-  const d = Math.hypot(dx, dz);
-  if (d > range) return [];
-  if (arc !== null) {
-    const facing = tmpFacing.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-    if ((dx / (d || 1)) * facing.x + (dz / (d || 1)) * facing.z < arc) return [];
+  const out = [];
+  const fx = Math.sin(player.yaw), fz = Math.cos(player.yaw);
+  for (const m of monsters) {
+    if (m.dead) continue;
+    const dx = m.pos.x - origin.x, dz = m.pos.z - origin.z;
+    const d = Math.hypot(dx, dz);
+    if (d > range) continue;
+    if (arc !== null && ((dx / (d || 1)) * fx + (dz / (d || 1)) * fz) < arc) continue;
+    out.push(m);
   }
-  return [monster];
+  return out;
 }
 
 function useAbility(index) {
@@ -573,7 +926,7 @@ function useAbility(index) {
       player.attackDur = 0.42;
       player.hasHit = true;                     // this ability does the damage itself
       const hit = monstersInRange(player.pos, ability.range, ability.arc);
-      for (const m of hit) damageMonster(power, true);
+      for (const m of hit) damageMonster(m, power, true);
       if (!hit.length) ui.floatText('forbi!', screenOf(player.pos, 2.0), 'loot');
       break;
     }
@@ -582,7 +935,7 @@ function useAbility(index) {
       player.attackTime = 0;
       player.attackDur = 0.5;
       player.hasHit = true;
-      for (const m of monstersInRange(player.pos, ability.range)) damageMonster(power, true);
+      for (const m of monstersInRange(player.pos, ability.range)) damageMonster(m, power, true);
       break;
     }
     case 'charge': {
@@ -590,7 +943,7 @@ function useAbility(index) {
       player.pos.addScaledVector(dir, ability.dash);
       ringFx(player.pos.x, player.pos.z, ability.range, ability.color, 0.4);
       for (const m of monstersInRange(player.pos, ability.range)) {
-        damageMonster(power, true);
+        damageMonster(m, power, true);
         m.pos.addScaledVector(dir, 2.2);        // shove it back
         m.state = 'chase';
         m.atk = null;
@@ -614,7 +967,7 @@ function useAbility(index) {
     case 'bolt': {
       const hit = monstersInRange(player.pos, ability.range);
       if (!hit.length) { ui.floatText('ingen fjende i sigte', screenOf(player.pos, 2.0), 'loot'); break; }
-      for (const m of hit) { burstFx(m.obj.position, ability.color); damageMonster(power, true); }
+      for (const m of hit) { burstFx(m.obj.position, ability.color); damageMonster(m, power, true); }
       break;
     }
   }
@@ -630,169 +983,6 @@ function updateAbilities(dt) {
     if (state.buffs[k] > 0) state.buffs[k] = Math.max(0, state.buffs[k] - dt);
   }
   updateFx(dt);
-}
-
-/* --------------------------- monster AI --------------------------- */
-function updateMonster(dt) {
-  const m = monster;
-  m.stateT += dt;
-  m.hurt = Math.max(0, m.hurt - dt);
-  m.cooldown = Math.max(0, m.cooldown - dt);
-
-  if (m.state === 'dead') {
-    m.obj.rotation.x = THREE.MathUtils.lerp(m.obj.rotation.x, -Math.PI / 2.2, dt * 6);
-    m.obj.position.y = THREE.MathUtils.lerp(m.obj.position.y, heightAt(m.pos.x, m.pos.z) - 0.3, dt * 4);
-    telegraph.visible = false;
-    if (respawnT > 0) {
-      respawnT -= dt;
-      if (respawnT <= 0) {
-        scene.remove(m.obj);
-        monster = spawnMonster(Math.max(1, state.level));
-        respawnT = -1;
-        ui.toast('Et nyt monster dukker op', 1400);
-      }
-    }
-    return;
-  }
-
-  const toPlayer = tmpV.copy(player.pos).sub(m.pos);
-  const dist = toPlayer.length();
-  toPlayer.normalize();
-
-  if (m.state === 'idle') {
-    if (m.stateT > 2.5) {
-      m.stateT = 0;
-      const a = Math.random() * Math.PI * 2;
-      m.wander.set(Math.cos(a), 0, Math.sin(a));
-    }
-    // gentle drift so it never looks frozen
-    const step = m.wander.clone().multiplyScalar(0.7 * dt);
-    m.pos.add(step);
-    if (step.lengthSq() > 1e-6) m.yaw = Math.atan2(step.x, step.z);
-    m.walkPhase += dt * 3;
-    if (dist < 12) { m.state = 'chase'; m.stateT = 0; }
-  } else if (m.state === 'chase') {
-    m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * 6);
-    if (m.cooldown > 0 && dist < 2.4) {
-      // give ground after swinging, so the fight has a rhythm
-      m.pos.addScaledVector(toPlayer, -m.speed * 0.55 * dt);
-      m.walkPhase += dt * 5;
-    } else if (dist > 1.9) {
-      m.pos.addScaledVector(toPlayer, m.speed * dt);
-      m.walkPhase += dt * 8;
-    }
-    if (dist < 2.3 && m.cooldown <= 0) {
-      startAttack(m, !m.lastHeavy && Math.random() < 0.4 ? 'heavy' : 'light');
-    }
-    if (dist > 20) { m.state = 'idle'; m.stateT = 0; }
-  } else if (m.state === 'attack') {
-    const a = m.atk;
-    a.t += dt;
-    // the heavy commits once it starts; the light still tracks you, but slowly
-    if (a.track > 0 && !a.hasHit) {
-      m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * a.track);
-    }
-    if (!a.hasHit && a.t >= a.hit) {
-      a.hasHit = true;
-      const facing = tmpFacing.set(Math.sin(m.yaw), 0, Math.cos(m.yaw));
-      if (dist < a.range && toPlayer.dot(facing) > 0.25) {
-        hurtPlayer(m.damage * a.dmg * (0.9 + Math.random() * 0.2));
-      } else {
-        ui.floatText('forbi!', screenOf(m.pos, 1.9), 'loot');
-      }
-    }
-    // the tail of the swing is a punish window: it cannot move or turn
-    if (a.t >= a.hit + a.recover) {
-      m.state = dist < 14 ? 'chase' : 'idle';
-      m.stateT = 0;
-      m.cooldown = a.cooldown;
-    }
-  }
-
-  // the town fence turns monsters away
-  const townD = townDistance(m.pos.x, m.pos.z);
-  const keepOut = TOWN.radius + 1.5;
-  if (townD < keepOut) {
-    const away = tmpFacing.set(m.pos.x - TOWN.x, 0, m.pos.z - TOWN.z);
-    if (away.lengthSq() < 1e-6) away.set(0, 0, -1);
-    away.normalize();
-    m.pos.set(TOWN.x + away.x * keepOut, 0, TOWN.z + away.z * keepOut);
-    if (m.state === 'attack') { m.state = 'idle'; m.stateT = 0; m.atk = null; }
-  }
-  // give up the chase once the player is safe inside
-  if (m.state !== 'idle' && inTown()) {
-    m.state = 'idle';
-    m.stateT = 0;
-    m.atk = null;
-  }
-
-  // never let it stand inside the player
-  const sep = tmpV.copy(m.pos).sub(player.pos);
-  const sepD = sep.length();
-  if (sepD < 1.5 && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), 1.5);
-
-  // keep it inside the arena
-  const lim = 70;
-  m.pos.x = THREE.MathUtils.clamp(m.pos.x, -lim, lim);
-  m.pos.z = THREE.MathUtils.clamp(m.pos.z, -lim, lim);
-  m.obj.position.set(m.pos.x, heightAt(m.pos.x, m.pos.z), m.pos.z);
-  m.obj.rotation.y = m.yaw;
-  updateTelegraph(m);
-  animateMonster(m, dt);
-}
-
-function animateMonster(m, dt) {
-  const u = m.obj.userData;
-  const swing = Math.sin(m.walkPhase) * (m.state === 'chase' ? 0.55 : 0.2);
-  u.legR.hip.rotation.x = swing;
-  u.legL.hip.rotation.x = -swing;
-  u.legR.knee.rotation.x = Math.max(0, -swing) * 0.6;
-  u.legL.knee.rotation.x = Math.max(0, swing) * 0.6;
-  plantFeet(m.obj, u.body, 0.98, [
-    { mesh: u.legR.foot, half: u.legR.footHalf },
-    { mesh: u.legL.foot, half: u.legL.footHalf },
-  ]);
-  u.headPivot.rotation.x = -0.22 + Math.sin(m.walkPhase * 0.5) * 0.05;
-
-  if (m.state === 'attack' && m.atk) {
-    const a = m.atk;
-    const p = THREE.MathUtils.clamp(a.t / a.hit, 0, 1);
-    const post = THREE.MathUtils.clamp((a.t - a.hit) / a.recover, 0, 1);
-    const ease = post * post * (3 - 2 * post);
-    const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
-    const L = THREE.MathUtils.lerp;
-    if (a.kind === 'heavy') {
-      // both arms haul up overhead, body rears back, then a committed slam
-      const raise = Math.sin(p * Math.PI * 0.5) * 2.6;
-      u.armR.shoulder.rotation.x = L(-raise + ease * 3.2, idle, ease * 0.7);
-      u.armL.shoulder.rotation.x = L(-raise + ease * 3.2, -idle, ease * 0.7);
-      u.lean.rotation.x = 0.3 - 0.28 * p + 0.5 * ease;
-    } else {
-      // a short cocked jab with the one arm
-      const cock = Math.sin(p * Math.PI * 0.5) * 1.4;
-      u.armR.shoulder.rotation.x = L(-cock + ease * 2.3, idle, ease * 0.75);
-      u.armL.shoulder.rotation.x = L(cock * 0.25, -idle, ease * 0.75);
-      u.lean.rotation.x = 0.3 + 0.12 * p;
-    }
-  } else {
-    u.lean.rotation.x = THREE.MathUtils.lerp(u.lean.rotation.x, 0.3, dt * 6);
-    const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
-    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, idle, dt * 6);
-    u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, -idle, dt * 6);
-  }
-  // hit flash wins; otherwise the body glows while a blow is winding up
-  const hurt = m.hurt > 0;
-  let r = 0, g = 0, bl = 0;
-  if (hurt) { r = 0.45; g = 0.1; bl = 0.1; }
-  else if (m.state === 'attack' && m.atk && !m.atk.hasHit) {
-    const charge = THREE.MathUtils.clamp(m.atk.t / m.atk.hit, 0, 1);
-    const heavy = m.atk.kind === 'heavy';
-    r = charge * (heavy ? 0.45 : 0.24);
-    g = charge * (heavy ? 0.06 : 0.16);
-  }
-  m.obj.traverse(o => {
-    if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setRGB(r, g, bl);
-  });
 }
 
 /* --------------------------- player update --------------------------- */
@@ -825,7 +1015,7 @@ function updatePlayer(dt) {
   // slow health regen out of combat
   if (inTown()) {
     state.hp = Math.min(t.maxHp, state.hp + 9 * dt);
-  } else if (monster.dead || player.pos.distanceTo(monster.pos) > 14) {
+  } else if (!monstersInRange(player.pos, 14).length) {
     state.hp = Math.min(t.maxHp, state.hp + 3.5 * dt);
   }
 
@@ -838,10 +1028,14 @@ function updatePlayer(dt) {
     }
   }
 
-  const lim = 90;
-  player.pos.x = THREE.MathUtils.clamp(player.pos.x, -lim, lim);
-  player.pos.z = THREE.MathUtils.clamp(player.pos.z, -lim, lim);
-  player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z);
+  if (zone === 'dungeon') {
+    clampToRooms(player.pos);
+  } else {
+    const lim = 90;
+    player.pos.x = THREE.MathUtils.clamp(player.pos.x, -lim, lim);
+    player.pos.z = THREE.MathUtils.clamp(player.pos.z, -lim, lim);
+  }
+  player.obj.position.set(player.pos.x, groundY(player.pos.x, player.pos.z), player.pos.z);
   player.obj.rotation.y = player.yaw;
   player.hurtFlash = Math.max(0, player.hurtFlash - dt);
   animatePlayer(dt, move.lengthSq() > 0, sprinting);
@@ -902,7 +1096,7 @@ function updateCamera(dt) {
   const elev = -look.pitch;                    // mouse down -> camera swings up
   const dir = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw));
   const side = new THREE.Vector3(-dir.z, 0, dir.x);
-  const ground = heightAt(player.pos.x, player.pos.z);
+  const ground = groundY(player.pos.x, player.pos.z);
   const pivotY = ground + CAM.pivot;
 
   const back = Math.cos(elev) * CAM.dist;
@@ -910,7 +1104,7 @@ function updateCamera(dt) {
     player.pos.x - dir.x * back + side.x * CAM.shoulder,
     pivotY + Math.sin(elev) * CAM.dist,
     player.pos.z - dir.z * back + side.z * CAM.shoulder);
-  want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
+  if (zone !== 'dungeon') want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
 
   if (camSnap) camera.position.copy(want); else camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
   camTarget.lerp(new THREE.Vector3(
@@ -927,7 +1121,7 @@ function updateDrops(dt) {
     const d = drops[i];
     d.t += dt;
     d.obj.rotation.y += dt * 1.6;
-    d.obj.position.y = heightAt(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
+    d.obj.position.y = groundY(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
     if (Math.hypot(d.obj.position.x - player.pos.x, d.obj.position.z - player.pos.z) < 2.0) {
       state.bag.unshift(d.item);
         // auto-equip if it is clearly better, so the demo stays friendly
@@ -950,13 +1144,14 @@ function frame() {
   if (state.running) {
     updatePlayer(dt);
     playerAttack(dt);
-    updateMonster(dt);
+    updateMonsters(dt);
+    updateRespawns(dt);
     updateDrops(dt);
     updateNpcs(dt);
     updateAbilities(dt);
   }
-  world.update(dt);
-  world.followSun(player.pos);
+  if (zone === 'dungeon') dungeon.update(dt, gameTime);
+  else { world.update(dt); world.followSun(player.pos); }
   if (!window.__djFreeCam) updateCamera(dt);
 
   // HUD
@@ -970,12 +1165,13 @@ function frame() {
     THREE.MathUtils.clamp(state.xp / xpForLevel(state.level), 0, 1),
     state.level);
 
-  if (!monster.dead) {
-    const s = screenOf(monster.pos, 1.85);
-    ui.updateEnemyBar(monster.id, {
-      x: s.x, y: s.y,
-      visible: s.visible && camera.position.distanceTo(monster.obj.position) < 45,
-      pct: monster.hp / monster.maxHp,
+  for (const m of monsters) {
+    if (m.dead) { ui.removeEnemyBar(m.id); continue; }
+    const p = screenOf(m.pos, m.kind.barY);
+    ui.updateEnemyBar(m.id, {
+      x: p.x, y: p.y,
+      visible: p.visible && camera.position.distanceTo(m.obj.position) < 45,
+      pct: m.hp / m.maxHp,
     });
   }
 
@@ -998,7 +1194,11 @@ function pause() {
 }
 function talk() {
   if (ui.shopOpen) { ui.closeShop(); return; }
-  if (!nearNpc || !state.running) return;
+  if (!state.running) return;
+  if (!nearNpc) {
+    if (nearDoor) setZone(nearDoor.to);
+    return;
+  }
   document.exitPointerLock?.();
   if (nearNpc.kind === 'healer') ui.openHealer(game);
   else {
@@ -1018,10 +1218,7 @@ function respawn() {
   state.hp = totals().maxHp;
   state.stamina = totals().maxStamina;
   player.pos.set(0, 0, 6);
-  if (monster && !monster.dead) {
-    monster.pos.set(0, 0, -14);
-    monster.state = 'idle';
-  }
+  for (const m of monsters) { m.state = 'idle'; m.stateT = 0; m.atk = null; m.angry = 0; }
   start();
 }
 
@@ -1030,13 +1227,15 @@ document.getElementById('respawn').addEventListener('click', respawn);
 
 // starting gear, so the dock reads like the concept art from frame one
 const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
-starter.stats = { skade: 14, smidighed: 6 };
+starter.stats = { skade: 8 };
 starter.name = 'Normal Sværd 1';
 game.equip(starter);
 state.hp = totals().maxHp;
 state.stamina = totals().maxStamina;
 ui.renderAll();
 ui.setGold(state.gold);
+
+spawnOverworld();
 
 // pose the world before the player presses Spil
 player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z);
@@ -1058,11 +1257,19 @@ window.__dj = {
   town: TOWN,
   inTown,
   get lootDropped() { return lootDropped; },
-  get monster() { return monster; },
+  monsters,
+  arrows,
+  get arrowsFired() { return arrowsFired; },
+  makeItem,
+  damageMonster,
+  get monster() { return nearestMonster() || monsters[0]; },
+  get zone() { return zone; },
+  setZone,
+  mausoleum, dungeon,
   attack() { wantAttack = true; },
   useAbility,
   abilities: ABILITIES,
-  forceAttack(kind) { monster.cooldown = 0; startAttack(monster, kind); },
+  forceAttack(kind) { const m = nearestMonster() || monsters[0]; if (m) { m.cooldown = 0; startAttack(m, kind); } },
   dropAt(x, z) { dropLoot(makeItem('armor', state.level), new THREE.Vector3(x, 0, z)); },
   get attacks() { return ATTACKS; },
   give(n = 3) {
