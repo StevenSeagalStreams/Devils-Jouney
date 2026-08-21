@@ -163,6 +163,33 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .slot.selected{outline:2px solid #ffd88a;outline-offset:1px}
 .slot:hover{border-color:#6d6d6d}
 
+/* ability bar */
+.slot.ability{overflow:hidden}
+.slot.ability .cd{
+  position:absolute;inset:-1px;display:none;border-radius:5px;
+  align-items:center;justify-content:center;pointer-events:none;
+}
+.slot.ability .cd span{
+  font-size:17px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.9);
+  position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;
+}
+.slot.ability.locked{filter:grayscale(1) brightness(.55)}
+.slot.ability .lock{
+  position:absolute;left:3px;top:1px;font-size:11px;font-weight:700;color:#c9a86a;
+  text-shadow:0 1px 2px rgba(0,0,0,.9);pointer-events:none;
+}
+.slot.ability.ready{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 55%, #2a2a2a)}
+
+/* timed effects */
+.buffs{display:flex;gap:8px;min-height:0}
+.buffs:empty{display:none}
+.buff{
+  display:flex;align-items:center;gap:6px;padding:3px 9px;border-radius:5px;
+  background:rgba(10,10,10,.75);border:2px solid var(--c,#666);font-size:12.5px;
+}
+.buff b{color:var(--c,#ddd);font-weight:700}
+.buff span{color:#e6e2d6}
+
 .xp-row{display:flex;align-items:center;gap:10px}
 .xp-bar{
   flex:1;height:14px;background:#2a1040;border:2px solid #3d1a5c;border-radius:3px;

@@ -118,7 +118,6 @@ const afterPickup = await page.evaluate(() => ({
   bag: window.__dj.state.bag.length,
   weapon: window.__dj.state.equipped.weapon?.name,
   owned: window.__dj.state.bag.length + Object.values(window.__dj.state.equipped).filter(Boolean).length,
-  hotbar: window.__dj.state.hotbar.filter(Boolean).length,
 }));
 check('walking over loot picks it up', afterPickup.drops === 0 && afterPickup.owned > 1,
   `owns ${afterPickup.owned} items (bag ${afterPickup.bag})`);
@@ -138,6 +137,78 @@ check('I opens the bag', invOpen);
 await page.screenshot({ path: 'shots/test-inventory.png' });
 await page.keyboard.press('i');
 await page.waitForTimeout(400);
+
+// --- turning must take the short way round the compass
+const turn = await page.evaluate(async () => {
+  const d = window.__dj;
+  d.player.pos.set(0, 0, 0);
+  d.player.yaw = 3.10;                 // facing just short of +pi
+  window.__djLook(0, -0.1);            // camera forward = +z, so W targets yaw 0...
+  // ...instead aim for -3.10: press S, whose target is atan2(0,-1) = pi, wrapping side
+  const samples = [];
+  window.__djKeys.add('s');
+  for (let i = 0; i < 40; i++) {
+    window.__djStep(0.03);
+    samples.push(Math.cos(d.player.yaw));
+  }
+  window.__djKeys.delete('s');
+  return { maxCos: Math.max(...samples), finalYaw: +d.player.yaw.toFixed(2) };
+});
+check('the hero turns the short way, not full circle', turn.maxCos < 0.2,
+  `front-facing peak cos=${turn.maxCos.toFixed(2)} (1.0 would mean she spun through forward)`);
+
+// --- abilities
+const abil = await page.evaluate(() => {
+  const d = window.__dj;
+  const out = {};
+  out.count = d.abilities.length;
+  out.locked = d.useAbility(7);                    // Dommedag needs level 15
+  d.state.level = 20;                              // unlock everything
+  d.state.hp = 50; d.state.stamina = 200;
+  d.monster.pos.copy(d.player.pos); d.monster.pos.z += 2.0;
+  d.monster.hp = d.monster.maxHp;
+  d.player.yaw = 0;                                // face it: Hug only hits in front
+
+  const hpBefore = d.monster.hp;
+  out.used = d.useAbility(0);                      // Hug
+  out.damaged = hpBefore - d.monster.hp;
+  out.onCooldown = d.state.cooldowns.hug > 0;
+  out.blockedWhileCooling = d.useAbility(0) === false;
+
+  const healBefore = d.state.hp;
+  d.useAbility(3);                                 // Forbinding
+  out.healed = d.state.hp - healBefore;
+
+  d.useAbility(4);                                 // Stenhud
+  out.shield = d.state.buffs.shield > 0;
+  const dmgBefore = d.totals().damage;
+  d.useAbility(6);                                 // Kampraseri
+  out.rage = d.totals().damage > dmgBefore;
+  return out;
+});
+check('there are eight abilities', abil.count === 8, `${abil.count}`);
+check('locked abilities cannot be used', abil.locked === false);
+check('an ability damages the monster', abil.used && abil.damaged > 0, `-${abil.damaged} hp`);
+check('using one starts its cooldown', abil.onCooldown && abil.blockedWhileCooling);
+check('the heal ability restores life', abil.healed > 0, `+${abil.healed} hp`);
+check('the shield and rage buffs apply', abil.shield && abil.rage);
+
+// abilities must get bigger as you level
+const scaling = await page.evaluate(async () => {
+  const { abilityPower } = await import('/src/abilities.js');
+  const d = window.__dj;
+  const a = d.abilities[0];
+  const at = lvl => { d.state.level = lvl; return abilityPower(a, lvl, d.totals()); };
+  return { low: at(1), high: at(20) };
+});
+check('abilities scale up with level', scaling.high > scaling.low * 2,
+  `Hug hits for ${scaling.low} at level 1 and ${scaling.high} at level 20`);
+
+await page.evaluate(() => {
+  const d = window.__dj;
+  d.state.level = 1; d.state.cooldowns = {}; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
+  d.monster.hp = d.monster.maxHp;
+});
 
 // --- loot must be reachable wherever it lands, including on high ground
 const hilly = await page.evaluate(() => {

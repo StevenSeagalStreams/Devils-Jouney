@@ -1,4 +1,5 @@
 import { drawItemIcon, statLines, itemScore, STAT_LABEL } from './items.js';
+import { ABILITIES, abilityPower, drawAbilityIcon } from './abilities.js';
 
 const $ = sel => document.querySelector(sel);
 
@@ -25,25 +26,90 @@ export class UI {
     this.bindPanel();
   }
 
-  /* ---------------- hotbar ---------------- */
+  /* ---------------- ability bar ---------------- */
   buildHotbar() {
     this.hotbar.innerHTML = '';
-    this.hotSlots = [];
-    for (let i = 0; i < 7; i++) {
+    this.abilitySlots = ABILITIES.map((ability, i) => {
       const el = document.createElement('div');
-      el.className = 'slot';
-      el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas><span class="key">${i + 1}</span>`;
-      el.addEventListener('click', () => {
-        const item = this.game.state.hotbar[i];
-        if (item) this.game.equip(item);
+      el.className = 'slot ability';
+      el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas>
+        <div class="cd"><span></span></div>
+        <div class="lock"></div>
+        <span class="key">${ability.key}</span>`;
+      el.addEventListener('click', () => this.game.useAbility(i));
+      el.addEventListener('mousemove', e => {
+        if (document.pointerLockElement) { this.tooltip.style.display = 'none'; return; }
+        this.showAbilityTip(ability, e.clientX, e.clientY);
       });
-      this.attachTip(el, () => this.game.state.hotbar[i]);
+      el.addEventListener('mouseleave', () => { this.tooltip.style.display = 'none'; });
       this.hotbar.appendChild(el);
-      this.hotSlots.push(el);
-    }
+      return el;
+    });
+    this.abilityUnlocked = new Array(ABILITIES.length).fill(null);
     const eq = $('#equipped-slot');
     eq.querySelector('.key')?.remove();
     this.attachTip(eq, () => this.game.state.equipped.weapon);
+  }
+
+  showAbilityTip(ability, x, y) {
+    const s = this.game.state;
+    const locked = s.level < ability.unlock;
+    const power = abilityPower(ability, s.level, this.game.totals());
+    this.tooltip.innerHTML = `
+      <div class="tt-name" style="color:${locked ? '#8a8a8a' : ability.color}">${ability.name}</div>
+      <div class="tt-type">Evne · tast ${ability.key}</div>
+      <div class="tt-stat">${locked ? `Låses op på niveau ${ability.unlock}` : ability.text(power)}</div>
+      <div class="tt-cmp">${ability.stamina ? `${ability.stamina} udholdenhed · ` : ''}${ability.cooldown}s pause</div>`;
+    this.tooltip.style.display = 'block';
+    const r = this.tooltip.getBoundingClientRect();
+    this.tooltip.style.left = Math.min(x + 16, window.innerWidth - r.width - 8) + 'px';
+    this.tooltip.style.top = Math.max(8, y - r.height - 12) + 'px';
+  }
+
+  /** Cheap per-frame pass: icons are only redrawn when something unlocks. */
+  renderAbilities() {
+    const s = this.game.state;
+    ABILITIES.forEach((ability, i) => {
+      const el = this.abilitySlots[i];
+      const locked = s.level < ability.unlock;
+      if (this.abilityUnlocked[i] !== !locked) {
+        this.abilityUnlocked[i] = !locked;
+        drawAbilityIcon(el.querySelector('canvas'), ability, locked);
+        el.classList.toggle('locked', locked);
+        el.style.setProperty('--rare', locked ? '#333' : ability.color);
+        el.querySelector('.lock').textContent = locked ? ability.unlock : '';
+      }
+      const cd = s.cooldowns[ability.id] || 0;
+      const wedge = el.querySelector('.cd');
+      if (cd > 0) {
+        const frac = cd / ability.cooldown;
+        wedge.style.display = 'block';
+        wedge.style.background =
+          `conic-gradient(rgba(0,0,0,.72) ${frac * 360}deg, rgba(0,0,0,0) 0deg)`;
+        wedge.firstElementChild.textContent = cd >= 1 ? Math.ceil(cd) : cd.toFixed(1);
+      } else if (wedge.style.display !== 'none') {
+        wedge.style.display = 'none';
+      }
+    });
+  }
+
+  /** Small pills for timed effects, above the dock. */
+  renderBuffs(buffs) {
+    const host = $('#buffs');
+    const active = Object.entries(buffs).filter(([, t]) => t > 0);
+    if (!active.length) { host.innerHTML = ''; host.dataset.keys = ''; return; }
+    const keys = active.map(([k]) => k).join(',');
+    if (host.dataset.keys !== keys) {
+      host.dataset.keys = keys;
+      host.innerHTML = active.map(([k]) => {
+        const a = ABILITIES.find(x => x.buff === k);
+        return `<div class="buff" style="--c:${a.color}"><b>${a.name}</b><span data-b="${k}"></span></div>`;
+      }).join('');
+    }
+    for (const [k, t] of active) {
+      const el = host.querySelector(`[data-b="${k}"]`);
+      if (el) el.textContent = `${Math.ceil(t)}s`;
+    }
   }
 
   /* ---------------- tooltip ---------------- */
@@ -108,7 +174,6 @@ export class UI {
   /* ---------------- rendering ---------------- */
   renderAll() {
     this.renderEquipped();
-    this.renderHotbar();
     this.renderBag();
     this.renderStats();
   }
@@ -121,15 +186,6 @@ export class UI {
     slot.style.setProperty('--rare', w ? w.color : '#8a8a8a');
     $('#equipped-name').textContent = w ? w.name : 'Ingen våben';
     $('#equipped-stats').innerHTML = w ? statLines(w).map(s => `<div>${s}</div>`).join('') : '<div>bare næver</div>';
-  }
-
-  renderHotbar() {
-    this.hotSlots.forEach((el, i) => {
-      const item = this.game.state.hotbar[i];
-      drawItemIcon(el.querySelector('canvas'), item);
-      el.classList.toggle('filled', !!item);
-      el.style.setProperty('--rare', item ? item.color : '#383838');
-    });
   }
 
   renderBag() {

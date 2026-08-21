@@ -7,6 +7,8 @@ no build step, no bundler, no install. Kill the monster, pick up better gear, le
 
 ![the town](docs/screenshot-town.png)
 
+![abilities](docs/screenshot-abilities.png)
+
 ## Play it
 
 The page uses ES modules, so it needs to be served over http (opening `index.html`
@@ -29,7 +31,7 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | `Shift` | run |
 | `I` | open the bag |
 | `E` | talk to the townsfolk |
-| `2`–`8` | equip from the hotbar |
+| `1`–`8` | use an ability |
 | `Esc` | pause |
 
 ## How it plays
@@ -51,6 +53,19 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 * Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`), and
   rarity is just a colour: grey → green → blue → purple → orange.
 * Fill the purple bar and you level up: more life, more damage, full heal.
+
+### Abilities
+
+Eight of them, on keys `1`–`8`, and eight is the cap. They unlock as you level —
+`Hug` at 1, then `Hvirvelvind`, `Stormløb`, `Forbinding`, `Stenhud`, `Ildstød`,
+`Kampraseri` and `Dommedag` at 15 — so there is always a next one coming. Each
+gets bigger in two ways: its own power grows past its unlock level, and the
+damaging ones are multiples of your weapon damage, which grows with gear. Hover
+a slot to see exactly what it does at your level.
+
+Locked slots are greyed with the level that opens them; a running cooldown
+sweeps around the slot with the seconds left, and timed effects sit as pills
+above the bar.
 
 ### The town
 
@@ -78,6 +93,7 @@ src/world.js        terrain, sky, trees, lighting
 src/characters.js   hero, monster and weapon meshes (built from primitives)
 src/items.js        loot generation and canvas item icons
 src/town.js         the town: cottages, stalls, fence and the safe zone
+src/abilities.js    the eight abilities, their scaling and their icons
 src/ui.js           HUD, bag, tooltips, floating numbers
 tools/shot.mjs      headless screenshot helper
 tools/playtest.mjs  headless play-through with assertions

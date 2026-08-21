@@ -3,6 +3,7 @@ import { createWorld, heightAt, TOWN, townDistance } from './world.js';
 import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel } from './characters.js';
 import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
+import { ABILITIES, abilityPower, abilityScale, unlockedAt } from './abilities.js';
 import { UI } from './ui.js';
 
 /* =================================================================== *
@@ -32,7 +33,8 @@ const state = {
   stamina: 100,
   gold: 0,
   bag: [],
-  hotbar: [],
+  cooldowns: {},
+  buffs: { shield: 0, rage: 0 },
   equipped: { weapon: null, armor: null, trinket: null },
   running: false,
   dead: false,
@@ -52,9 +54,10 @@ function totals() {
     if (item.slot === 'weapon') tier = item.tier;
   }
   const lvl = state.level;
+  const rage = state.buffs.rage > 0 ? 1.6 : 1;
   return {
     maxHp: BASE.hp + liv + (lvl - 1) * 12,
-    damage: BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 2,
+    damage: Math.round((BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 2) * rage),
     smidighed, styrke, liv, tier,
     maxStamina: BASE.stamina + smidighed * 1.5,
     speed: BASE.speed + smidighed * 0.03,
@@ -230,9 +233,8 @@ addEventListener('keydown', e => {
     return;
   }
   if (k === 'e') { talk(); return; }
-  if (k >= '1' && k <= '7') {
-    const item = state.hotbar[+k - 1];
-    if (item) equip(item);
+  if (k >= '1' && k <= '8') {
+    useAbility(+k - 1);
     return;
   }
   keys.add(k);
@@ -282,6 +284,7 @@ renderer.setSize(innerWidth, innerHeight);
 const game = {
   state,
   totals,
+  useAbility,
   /** Taking off +liv gear can leave hp above the new max until the next frame. */
   clampVitals() {
     const t = totals();
@@ -296,7 +299,6 @@ const game = {
     if (prev) state.bag.unshift(prev);
     if (item.slot === 'weapon') player.obj.userData.setWeaponTier(item.tier);
     this.clampVitals();
-    syncHotbar();
     ui.renderAll();
     ui.toast(`Tog ${item.name} på`, 1200);
   },
@@ -307,7 +309,6 @@ const game = {
     state.bag.unshift(item);
     if (slot === 'weapon') player.obj.userData.setWeaponTier(0);
     this.clampVitals();
-    syncHotbar();
     ui.renderAll();
   },
   stock: [],
@@ -341,7 +342,6 @@ const game = {
     this.stock.splice(i, 1);
     state.gold -= price;
     state.bag.unshift(item);
-    syncHotbar();
     ui.setGold(state.gold);
     ui.renderAll();
     ui.toast(`Købte ${item.name}`, 1200);
@@ -351,7 +351,6 @@ const game = {
     if (i < 0) return;
     state.bag.splice(i, 1);
     state.gold += this.sellPrice(item);
-    syncHotbar();
     ui.setGold(state.gold);
     ui.renderAll();
   },
@@ -359,7 +358,6 @@ const game = {
     const i = state.bag.indexOf(item);
     if (i < 0) return;
     state.bag.splice(i, 1);
-    syncHotbar();
     ui.renderAll();
     ui.toast(`Smed ${item.name} væk`, 1100);
   },
@@ -368,14 +366,19 @@ const game = {
 const ui = new UI(game);
 ui.onShopClose = () => { if (state.running && !ui.inventoryOpen) canvas.requestPointerLock?.(); };
 
-function syncHotbar() {
-  state.hotbar = state.bag.slice(0, 7);
-}
-
 /* --------------------------- combat helpers --------------------------- */
 const tmpV = new THREE.Vector3();
 const tmpFoot = new THREE.Vector3();
 const tmpFacing = new THREE.Vector3();
+
+/** Turn the short way round. Lerping raw angles spins almost full circle
+ *  whenever the target crosses the -pi/+pi wrap. */
+function turnTowards(current, target, t) {
+  let d = (target - current) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  else if (d < -Math.PI) d += Math.PI * 2;
+  return current + d * Math.min(1, t);
+}
 
 /** Rigid legs shorten as they swing, so pin the lowest foot to the terrain and
  *  let the pelvis height fall out of that — no hand-tuned bob to get wrong. */
@@ -415,7 +418,8 @@ function gainXp(amount) {
   if (leveled) {
     state.hp = totals().maxHp;
     state.stamina = totals().maxStamina;
-    ui.toast(`Niveau ${state.level}!`, 1800);
+    const fresh = ABILITIES.find(a => a.unlock === state.level);
+    ui.toast(fresh ? `Niveau ${state.level} — ny evne: ${fresh.name} (${fresh.key})` : `Niveau ${state.level}!`, 2200);
     ui.floatText(`Niveau ${state.level}`, screenOf(player.pos, 2.4), 'xp');
     ui.renderStats();
   }
@@ -484,6 +488,7 @@ function playerAttack(dt) {
 
 function hurtPlayer(amount) {
   if (inTown()) return;             // the fence is the safe line
+  if (state.buffs.shield > 0) amount *= 0.5;
   state.hp -= amount;
   player.hurtFlash = 0.25;
   ui.flashDamage();
@@ -496,6 +501,135 @@ function die() {
   state.running = false;
   document.exitPointerLock?.();
   document.getElementById('death').classList.remove('hidden');
+}
+
+/* --------------------------- abilities --------------------------- */
+// short-lived expanding rings so every ability reads on screen
+const fx = [];
+function ringFx(x, z, radius, color, life = 0.45) {
+  const mesh = new THREE.Mesh(
+    new THREE.RingGeometry(0.78, 1.0, 36),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(x, heightAt(x, z) + 0.08, z);
+  mesh.scale.setScalar(0.2);
+  scene.add(mesh);
+  fx.push({ mesh, t: 0, life, radius });
+}
+function burstFx(pos, color) {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 10, 8),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false }));
+  mesh.position.copy(pos);
+  mesh.position.y += 1.0;
+  scene.add(mesh);
+  fx.push({ mesh, t: 0, life: 0.35, radius: 2.2, grow: true });
+}
+function updateFx(dt) {
+  for (let i = fx.length - 1; i >= 0; i--) {
+    const f = fx[i];
+    f.t += dt;
+    const p = f.t / f.life;
+    f.mesh.scale.setScalar(0.2 + p * f.radius);
+    f.mesh.material.opacity = Math.max(0, 0.85 * (1 - p));
+    if (p >= 1) { scene.remove(f.mesh); f.mesh.geometry.dispose(); f.mesh.material.dispose(); fx.splice(i, 1); }
+  }
+}
+
+/** Every living monster in range — a list of one today, more later. */
+function monstersInRange(origin, range, arc = null) {
+  if (monster.dead) return [];
+  const dx = monster.pos.x - origin.x, dz = monster.pos.z - origin.z;
+  const d = Math.hypot(dx, dz);
+  if (d > range) return [];
+  if (arc !== null) {
+    const facing = tmpFacing.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+    if ((dx / (d || 1)) * facing.x + (dz / (d || 1)) * facing.z < arc) return [];
+  }
+  return [monster];
+}
+
+function useAbility(index) {
+  const ability = ABILITIES[index];
+  if (!ability || !state.running || state.dead) return false;
+  if (state.level < ability.unlock) {
+    ui.toast(`${ability.name} låses op på niveau ${ability.unlock}`, 1400);
+    return false;
+  }
+  if ((state.cooldowns[ability.id] || 0) > 0) return false;
+  const t = totals();
+  if (ability.stamina > state.stamina) {
+    ui.toast('Ikke nok udholdenhed', 1100);
+    return false;
+  }
+
+  const power = abilityPower(ability, state.level, t);
+  state.stamina -= ability.stamina;
+  state.cooldowns[ability.id] = ability.cooldown;
+
+  switch (ability.kind) {
+    case 'melee': {
+      player.attackTime = 0;                    // reuse the sword swing
+      player.attackDur = 0.42;
+      player.hasHit = true;                     // this ability does the damage itself
+      const hit = monstersInRange(player.pos, ability.range, ability.arc);
+      for (const m of hit) damageMonster(power, true);
+      if (!hit.length) ui.floatText('forbi!', screenOf(player.pos, 2.0), 'loot');
+      break;
+    }
+    case 'aoe': {
+      ringFx(player.pos.x, player.pos.z, ability.range, ability.color, 0.5);
+      player.attackTime = 0;
+      player.attackDur = 0.5;
+      player.hasHit = true;
+      for (const m of monstersInRange(player.pos, ability.range)) damageMonster(power, true);
+      break;
+    }
+    case 'charge': {
+      const dir = tmpFacing.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      player.pos.addScaledVector(dir, ability.dash);
+      ringFx(player.pos.x, player.pos.z, ability.range, ability.color, 0.4);
+      for (const m of monstersInRange(player.pos, ability.range)) {
+        damageMonster(power, true);
+        m.pos.addScaledVector(dir, 2.2);        // shove it back
+        m.state = 'chase';
+        m.atk = null;
+        m.cooldown = Math.max(m.cooldown, 0.8);
+      }
+      break;
+    }
+    case 'heal': {
+      state.hp = Math.min(t.maxHp, state.hp + power);
+      ringFx(player.pos.x, player.pos.z, 2.2, ability.color, 0.5);
+      ui.floatText(`+${power}`, screenOf(player.pos, 2.2), 'loot');
+      ui.renderStats();
+      break;
+    }
+    case 'buff': {
+      state.buffs[ability.buff] = ability.duration;
+      ringFx(player.pos.x, player.pos.z, 2.4, ability.color, 0.5);
+      ui.floatText(ability.name, screenOf(player.pos, 2.4), 'xp');
+      break;
+    }
+    case 'bolt': {
+      const hit = monstersInRange(player.pos, ability.range);
+      if (!hit.length) { ui.floatText('ingen fjende i sigte', screenOf(player.pos, 2.0), 'loot'); break; }
+      for (const m of hit) { burstFx(m.obj.position, ability.color); damageMonster(power, true); }
+      break;
+    }
+  }
+  ui.toast(ability.name, 900);
+  return true;
+}
+
+function updateAbilities(dt) {
+  for (const id in state.cooldowns) {
+    if (state.cooldowns[id] > 0) state.cooldowns[id] = Math.max(0, state.cooldowns[id] - dt);
+  }
+  for (const k in state.buffs) {
+    if (state.buffs[k] > 0) state.buffs[k] = Math.max(0, state.buffs[k] - dt);
+  }
+  updateFx(dt);
 }
 
 /* --------------------------- monster AI --------------------------- */
@@ -538,7 +672,7 @@ function updateMonster(dt) {
     m.walkPhase += dt * 3;
     if (dist < 12) { m.state = 'chase'; m.stateT = 0; }
   } else if (m.state === 'chase') {
-    m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * 6));
+    m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * 6);
     if (m.cooldown > 0 && dist < 2.4) {
       // give ground after swinging, so the fight has a rhythm
       m.pos.addScaledVector(toPlayer, -m.speed * 0.55 * dt);
@@ -556,7 +690,7 @@ function updateMonster(dt) {
     a.t += dt;
     // the heavy commits once it starts; the light still tracks you, but slowly
     if (a.track > 0 && !a.hasHit) {
-      m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * a.track));
+      m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * a.track);
     }
     if (!a.hasHit && a.t >= a.hit) {
       a.hasHit = true;
@@ -677,10 +811,7 @@ function updatePlayer(dt) {
   if (move.lengthSq() > 0) {
     move.normalize();
     player.pos.addScaledVector(move, speed * dt);
-    player.yaw = THREE.MathUtils.lerp(
-      player.yaw,
-      Math.atan2(move.x, move.z),
-      1 - Math.pow(0.0001, dt));
+    player.yaw = turnTowards(player.yaw, Math.atan2(move.x, move.z), 1 - Math.pow(0.0001, dt));
     player.walkPhase += dt * (sprinting ? 12 : 8);
   } else {
     player.walkPhase += dt * 1.6;
@@ -799,8 +930,7 @@ function updateDrops(dt) {
     d.obj.position.y = heightAt(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
     if (Math.hypot(d.obj.position.x - player.pos.x, d.obj.position.z - player.pos.z) < 2.0) {
       state.bag.unshift(d.item);
-      syncHotbar();
-      // auto-equip if it is clearly better, so the demo stays friendly
+        // auto-equip if it is clearly better, so the demo stays friendly
       const cur = state.equipped[d.item.slot];
       if (!cur || itemScore(d.item) > itemScore(cur)) game.equip(d.item);
       else { ui.renderAll(); ui.toast(`Fandt ${d.item.name}`, 1300); }
@@ -823,6 +953,7 @@ function frame() {
     updateMonster(dt);
     updateDrops(dt);
     updateNpcs(dt);
+    updateAbilities(dt);
   }
   world.update(dt);
   world.followSun(player.pos);
@@ -831,6 +962,8 @@ function frame() {
   // HUD
   const t = totals();
   state.hp = Math.min(state.hp, t.maxHp);
+  ui.renderAbilities();
+  ui.renderBuffs(state.buffs);
   ui.setBars(
     THREE.MathUtils.clamp(state.hp / t.maxHp, 0, 1),
     THREE.MathUtils.clamp(state.stamina / t.maxStamina, 0, 1),
@@ -913,6 +1046,8 @@ frame();
 
 window.__djPose = () => animatePlayer(0.016, false, false);
 window.__djHeightAt = heightAt;
+window.__djKeys = keys;
+window.__djStep = (dt) => { updatePlayer(dt); };
 window.__djLook = (yaw, pitch) => { look.yaw = yaw; look.pitch = pitch; camSnap = true; };
 window.__djCam = (dt, pitch) => { if (pitch !== undefined) look.pitch = pitch; updateCamera(dt); };
 
@@ -925,12 +1060,13 @@ window.__dj = {
   get lootDropped() { return lootDropped; },
   get monster() { return monster; },
   attack() { wantAttack = true; },
+  useAbility,
+  abilities: ABILITIES,
   forceAttack(kind) { monster.cooldown = 0; startAttack(monster, kind); },
   dropAt(x, z) { dropLoot(makeItem('armor', state.level), new THREE.Vector3(x, 0, z)); },
   get attacks() { return ATTACKS; },
   give(n = 3) {
     for (let i = 0; i < n; i++) state.bag.push(makeItem(['weapon', 'armor', 'trinket'][i % 3], state.level));
-    syncHotbar();
     ui.renderAll();
   },
 };
