@@ -585,7 +585,6 @@ function frame() {
       x: s.x, y: s.y,
       visible: s.visible && camera.position.distanceTo(monster.obj.position) < 45,
       pct: monster.hp / monster.maxHp,
-      name: monster.name,
     });
   }
 

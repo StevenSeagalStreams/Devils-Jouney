@@ -77,7 +77,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 }
 .float-num{
   position:absolute;transform:translate(-50%,-50%);font-weight:800;font-size:22px;
-  pointer-events:none;-webkit-text-stroke:1px rgba(0,0,0,.9);paint-order:stroke fill;
+  pointer-events:none;white-space:nowrap;-webkit-text-stroke:1px rgba(0,0,0,.9);paint-order:stroke fill;
   text-shadow:0 2px 4px rgba(0,0,0,.85);
 }
 .float-num.dmg{color:#ffe9a8}
@@ -132,8 +132,8 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 /* ---------- inventory ---------- */
 .panel{
-  position:absolute;left:50%;top:44%;transform:translate(-50%,-50%);
-  width:min(880px,92vw);max-height:calc(100vh - 190px);display:flex;flex-direction:column;
+  position:absolute;left:50%;top:calc(50% + 10px);transform:translate(-50%,-50%);
+  width:min(880px,92vw);max-height:calc(100vh - 300px);display:flex;flex-direction:column;
   background:rgba(14,14,14,.95);
   border:2px solid #3a3a3a;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);
   pointer-events:auto;z-index:5;
@@ -143,7 +143,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .panel-head h2{font-family:Georgia,serif;font-size:26px;font-variant:small-caps;font-weight:700}
 .panel-head button{background:#222;border:2px solid #3a3a3a;color:#ddd;width:34px;height:34px;border-radius:6px;cursor:pointer;font-size:16px}
 .panel-head button:hover{background:#333}
-.panel-body{display:flex;gap:20px;padding:18px;overflow:auto}
+.panel-body{display:flex;gap:20px;padding:18px 18px 26px;overflow:auto;scrollbar-width:thin;scrollbar-color:#5a5a5a #191919}
 .col-label{font-size:14px;color:#b9b4a6;margin-bottom:8px;font-weight:600}
 .col-label .dim{color:#6f6b61;font-weight:400}
 .equip-col{width:250px}
@@ -193,6 +193,8 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 @media (max-width:900px){
   .bar{width:300px}
+  .bar-stamina{width:264px}
+  .slot.slot-big{width:56px;height:56px}
   .title-plate{font-size:38px}
   .dock-item{min-width:240px}
   .slot{width:48px;height:48px}

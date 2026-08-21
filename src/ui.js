@@ -188,8 +188,8 @@ export class UI {
     const el = document.createElement('div');
     el.className = `float-num ${kind}`;
     el.textContent = text;
-    el.style.left = screen.x + 'px';
-    el.style.top = screen.y + 'px';
+    el.style.left = Math.max(70, Math.min(window.innerWidth - 70, screen.x)) + 'px';
+    el.style.top = Math.max(20, Math.min(window.innerHeight - 20, screen.y)) + 'px';
     this.worldUI.appendChild(el);
     setTimeout(() => el.remove(), 1150);
   }
@@ -199,21 +199,20 @@ export class UI {
     if (!bar) {
       bar = document.createElement('div');
       bar.className = 'enemy-bar';
-      bar.innerHTML = '<div class="name"></div><div class="fill"></div>';
+      bar.innerHTML = '<div class="fill"></div>';
       this.worldUI.appendChild(bar);
       this.enemyBars.set(id, bar);
     }
     return bar;
   }
 
-  updateEnemyBar(id, { x, y, visible, pct, name }) {
+  updateEnemyBar(id, { x, y, visible, pct }) {
     const bar = this.enemyBar(id);
     bar.style.display = visible ? 'block' : 'none';
     if (!visible) return;
     bar.style.left = x + 'px';
     bar.style.top = y + 'px';
     bar.querySelector('.fill').style.width = Math.max(0, pct * 100) + '%';
-    bar.querySelector('.name').textContent = name;
   }
 
   removeEnemyBar(id) {
