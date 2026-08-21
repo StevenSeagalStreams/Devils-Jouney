@@ -317,3 +317,76 @@ export function createMonsterModel(variant = 0) {
   root.userData = { body, lean, headPivot, armR, armL, legR, legL };
   return root;
 }
+
+/* ------------------------------------------------------------------ *
+ *  Townsfolk — a robed figure; colour tells the two trades apart       *
+ * ------------------------------------------------------------------ */
+export function createNpcModel(kind = 'healer') {
+  const look = kind === 'healer'
+    ? { robe: '#3f8f57', trim: '#eae2c8', hair: '#6b5a3a', skin: '#d8a87c' }
+    : { robe: '#8d6a2a', trim: '#e8c96a', hair: '#3a2a1c', skin: '#c99a6d' };
+
+  const root = new THREE.Group();
+  const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.52, 1.16, 10), flat(look.robe));
+  robe.position.y = 0.58;
+  robe.castShadow = true;
+  robe.receiveShadow = true;
+  root.add(robe);
+
+  const chest = box(0.46, 0.34, 0.30, flat(look.robe));
+  chest.position.y = 1.3;
+  root.add(chest);
+  const sash = box(0.5, 0.1, 0.33, flat(look.trim));
+  sash.position.y = 1.16;
+  root.add(sash);
+
+  for (const sgn of [-1, 1]) {
+    const arm = caps(0.075, 0.07, 0.5, flat(look.robe), 7);
+    arm.position.set(sgn * 0.28, 1.2, 0.02);
+    arm.rotation.z = sgn * 0.16;
+    root.add(arm);
+    const hand = sphere(0.062, flat(look.skin), 7);
+    hand.position.set(sgn * 0.33, 0.95, 0.03);
+    root.add(hand);
+  }
+
+  const head = sphere(0.165, flat(look.skin), 12);
+  head.scale.set(0.94, 1.04, 0.96);
+  head.position.y = 1.62;
+  root.add(head);
+  const hair = sphere(0.172, flat(look.hair), 12);
+  hair.scale.set(1.0, 0.72, 1.0);
+  hair.position.y = 1.68;
+  root.add(hair);
+  const eyeMat = new THREE.MeshBasicMaterial({ color: '#2b1c12' });
+  for (const sgn of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.02, 7, 7), eyeMat);
+    eye.position.set(0.05 * sgn, 1.62, 0.145);
+    root.add(eye);
+  }
+
+  if (kind === 'healer') {
+    // a plain green cross on a staff, so the trade reads at a glance
+    const staff = caps(0.035, 0.035, 1.7, flat('#6b4a2b'), 6);
+    staff.position.set(0.42, 0.85, 0.05);
+    root.add(staff);
+    const cross = new THREE.Group();
+    cross.position.set(0.42, 1.75, 0.05);
+    const barA = box(0.34, 0.11, 0.08, flat('#5fd35f'));
+    const barB = box(0.11, 0.34, 0.08, flat('#5fd35f'));
+    cross.add(barA, barB);
+    root.add(cross);
+  } else {
+    const pouch = sphere(0.13, flat('#5d3d24'), 8);
+    pouch.scale.set(1, 0.85, 0.7);
+    pouch.position.set(-0.3, 1.02, 0.16);
+    root.add(pouch);
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 12), flat('#e8c96a'));
+    coin.rotation.x = Math.PI / 2;
+    coin.position.set(0.36, 1.12, 0.16);
+    root.add(coin);
+  }
+
+  root.userData = { kind, bob: Math.random() * Math.PI * 2 };
+  return root;
+}

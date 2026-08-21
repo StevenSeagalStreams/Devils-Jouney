@@ -5,6 +5,8 @@ no build step, no bundler, no install. Kill the monster, pick up better gear, le
 
 ![screenshot](docs/screenshot-gameplay.png)
 
+![the town](docs/screenshot-town.png)
+
 ## Play it
 
 The page uses ES modules, so it needs to be served over http (opening `index.html`
@@ -26,6 +28,7 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | left click | swing your sword |
 | `Shift` | run |
 | `I` | open the bag |
+| `E` | talk to the townsfolk |
 | `2`–`8` | equip from the hotbar |
 | `Esc` | pause |
 
@@ -49,6 +52,19 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
   rarity is just a colour: grey → green → blue → purple → orange.
 * Fill the purple bar and you level up: more life, more damage, full heal.
 
+### The town
+
+Behind where you start, over the rise, there is a fenced town. Nothing can hurt
+you inside the fence: monsters that chase you there are turned away at the
+posts, blows do no damage, and you heal faster just standing around. Two people
+keep stalls by the gate — walk up and press `E`:
+
+* the **healer** puts you back to full, priced off the life you are missing;
+* the **merchant** sells four pieces of gear at your level and buys anything out
+  of your bag for about 40% of its worth.
+
+Monsters drop gold as well as gear, which is what pays for both.
+
 The camera is a fixed third-person rig: it orbits a pivot above the hero at a
 constant distance, so the mouse swings it around her and never leaves her out
 of frame.
@@ -61,6 +77,7 @@ src/main.js         game loop, input, combat, camera
 src/world.js        terrain, sky, trees, lighting
 src/characters.js   hero, monster and weapon meshes (built from primitives)
 src/items.js        loot generation and canvas item icons
+src/town.js         the town: cottages, stalls, fence and the safe zone
 src/ui.js           HUD, bag, tooltips, floating numbers
 tools/shot.mjs      headless screenshot helper
 tools/playtest.mjs  headless play-through with assertions

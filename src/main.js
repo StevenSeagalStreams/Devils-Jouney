@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { createWorld, heightAt } from './world.js';
-import { createPlayerModel, createMonsterModel, createWeaponMesh } from './characters.js';
+import { createWorld, heightAt, TOWN, townDistance } from './world.js';
+import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel } from './characters.js';
 import { makeItem, itemScore, RARITIES } from './items.js';
+import { createTown } from './town.js';
 import { UI } from './ui.js';
 
 /* =================================================================== *
@@ -29,6 +30,7 @@ const state = {
   xp: 0,
   hp: 100,
   stamina: 100,
+  gold: 0,
   bag: [],
   hotbar: [],
   equipped: { weapon: null, armor: null, trinket: null },
@@ -58,6 +60,44 @@ function totals() {
     speed: BASE.speed + smidighed * 0.03,
     attackSpeed: 1 + smidighed * 0.008,
   };
+}
+
+/* --------------------------- town --------------------------- */
+const town = createTown(scene);
+
+/** Inside the fence nothing can hurt you. */
+function inTown(pos = player.pos) {
+  return townDistance(pos.x, pos.z) < TOWN.radius;
+}
+
+const npcs = [
+  { kind: 'healer', name: 'Helbrederen', hint: 'hele dig', spot: town.healerSpot, obj: createNpcModel('healer') },
+  { kind: 'merchant', name: 'Handelsmanden', hint: 'handle', spot: town.merchantSpot, obj: createNpcModel('merchant') },
+];
+for (const npc of npcs) {
+  npc.obj.position.set(npc.spot.x, heightAt(npc.spot.x, npc.spot.z), npc.spot.z);
+  npc.obj.rotation.y = Math.PI;          // face out over the counter, toward the gate
+  scene.add(npc.obj);
+}
+let nearNpc = null;
+
+function updateNpcs(dt) {
+  for (const npc of npcs) {
+    npc.obj.userData.bob += dt * 1.5;
+    npc.obj.position.y = heightAt(npc.spot.x, npc.spot.z) + Math.sin(npc.obj.userData.bob) * 0.03;
+  }
+  // closest one you could talk to
+  let best = null, bestD = 3.0;
+  for (const npc of npcs) {
+    const d = Math.hypot(npc.spot.x - player.pos.x, npc.spot.z - player.pos.z);
+    if (d < bestD) { bestD = d; best = npc; }
+  }
+  nearNpc = best;
+  if (best && !ui.shopOpen && !ui.inventoryOpen) {
+    ui.showPrompt(`<b>E</b> — tal med ${best.name} for at ${best.hint}`);
+  } else {
+    ui.hidePrompt();
+  }
 }
 
 /* --------------------------- player --------------------------- */
@@ -137,9 +177,12 @@ function spawnMonster(level) {
   if (monsterSeq === 1) {
     m.pos.set(0, 0, -11);
   } else {
-    const a = Math.random() * Math.PI * 2;
-    const r = 11 + Math.random() * 7;
-    m.pos.set(player.pos.x + Math.cos(a) * r, 0, player.pos.z + Math.sin(a) * r);
+    for (let tries = 0; tries < 24; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 11 + Math.random() * 7;
+      m.pos.set(player.pos.x + Math.cos(a) * r, 0, player.pos.z + Math.sin(a) * r);
+      if (townDistance(m.pos.x, m.pos.z) > TOWN.radius + 4) break;
+    }
   }
   m.obj.position.copy(m.pos);
   m.obj.scale.setScalar(0.88 + Math.min(level, 8) * 0.03);
@@ -181,7 +224,12 @@ const look = { yaw: Math.PI, pitch: -0.10 };
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'i' || k === 'tab') { e.preventDefault(); toggleBag(); return; }
-  if (k === 'escape') { pause(); return; }
+  if (k === 'escape') {
+    if (ui.shopOpen) { ui.closeShop(); return; }
+    pause();
+    return;
+  }
+  if (k === 'e') { talk(); return; }
   if (k >= '1' && k <= '7') {
     const item = state.hotbar[+k - 1];
     if (item) equip(item);
@@ -208,7 +256,7 @@ addEventListener('mousemove', e => {
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
-  if (!locked && hadLock && state.running && !ui.inventoryOpen) pause();
+  if (!locked && hadLock && state.running && !ui.inventoryOpen && !ui.shopOpen) pause();
   hadLock = locked;
 });
 
@@ -262,6 +310,51 @@ const game = {
     syncHotbar();
     ui.renderAll();
   },
+  stock: [],
+  stockLevel: 0,
+  restock() {
+    this.stockLevel = state.level;
+    this.stock = [];
+    const types = ['weapon', 'armor', 'trinket', 'weapon'];
+    for (const t of types) this.stock.push(makeItem(t, Math.max(1, state.level), Math.random));
+  },
+  buyPrice(item) { return Math.max(6, Math.round(10 + itemScore(item) * 1.35)); },
+  sellPrice(item) { return Math.max(2, Math.round(this.buyPrice(item) * 0.4)); },
+  healCost() {
+    const missing = Math.max(0, totals().maxHp - state.hp);
+    return missing <= 0 ? 0 : Math.max(4, Math.ceil(missing * 0.55));
+  },
+  buyHeal() {
+    const cost = this.healCost();
+    if (cost <= 0 || state.gold < cost) return;
+    state.gold -= cost;
+    state.hp = totals().maxHp;
+    ui.setGold(state.gold);
+    ui.renderStats();
+    ui.toast('Du føler dig frisk igen', 1300);
+  },
+  buyItem(item) {
+    const price = this.buyPrice(item);
+    if (state.gold < price) return;
+    const i = this.stock.indexOf(item);
+    if (i < 0) return;
+    this.stock.splice(i, 1);
+    state.gold -= price;
+    state.bag.unshift(item);
+    syncHotbar();
+    ui.setGold(state.gold);
+    ui.renderAll();
+    ui.toast(`Købte ${item.name}`, 1200);
+  },
+  sellItem(item) {
+    const i = state.bag.indexOf(item);
+    if (i < 0) return;
+    state.bag.splice(i, 1);
+    state.gold += this.sellPrice(item);
+    syncHotbar();
+    ui.setGold(state.gold);
+    ui.renderAll();
+  },
   dropItem(item) {
     const i = state.bag.indexOf(item);
     if (i < 0) return;
@@ -273,6 +366,7 @@ const game = {
 };
 
 const ui = new UI(game);
+ui.onShopClose = () => { if (state.running && !ui.inventoryOpen) canvas.requestPointerLock?.(); };
 
 function syncHotbar() {
   state.hotbar = state.bag.slice(0, 7);
@@ -341,6 +435,10 @@ function killMonster() {
   const xp = 18 + monster.level * 8;
   gainXp(xp);
   ui.floatText(`+${xp} xp`, screenOf(monster.pos, 2.0), 'xp');
+  const gold = 4 + monster.level * 3 + Math.floor(Math.random() * 6);
+  state.gold += gold;
+  ui.setGold(state.gold);
+  ui.floatText(`+${gold} guld`, screenOf(monster.pos, 1.4), 'gold');
   ui.removeEnemyBar(monster.id);
 
   // loot: always something small, sometimes a real upgrade
@@ -385,6 +483,7 @@ function playerAttack(dt) {
 }
 
 function hurtPlayer(amount) {
+  if (inTown()) return;             // the fence is the safe line
   state.hp -= amount;
   player.hurtFlash = 0.25;
   ui.flashDamage();
@@ -474,6 +573,23 @@ function updateMonster(dt) {
       m.stateT = 0;
       m.cooldown = a.cooldown;
     }
+  }
+
+  // the town fence turns monsters away
+  const townD = townDistance(m.pos.x, m.pos.z);
+  const keepOut = TOWN.radius + 1.5;
+  if (townD < keepOut) {
+    const away = tmpFacing.set(m.pos.x - TOWN.x, 0, m.pos.z - TOWN.z);
+    if (away.lengthSq() < 1e-6) away.set(0, 0, -1);
+    away.normalize();
+    m.pos.set(TOWN.x + away.x * keepOut, 0, TOWN.z + away.z * keepOut);
+    if (m.state === 'attack') { m.state = 'idle'; m.stateT = 0; m.atk = null; }
+  }
+  // give up the chase once the player is safe inside
+  if (m.state !== 'idle' && inTown()) {
+    m.state = 'idle';
+    m.stateT = 0;
+    m.atk = null;
   }
 
   // never let it stand inside the player
@@ -576,8 +692,19 @@ function updatePlayer(dt) {
   if (sprinting) state.stamina = Math.max(0, state.stamina);
 
   // slow health regen out of combat
-  if (monster.dead || player.pos.distanceTo(monster.pos) > 14) {
+  if (inTown()) {
+    state.hp = Math.min(t.maxHp, state.hp + 9 * dt);
+  } else if (monster.dead || player.pos.distanceTo(monster.pos) > 14) {
     state.hp = Math.min(t.maxHp, state.hp + 3.5 * dt);
+  }
+
+  for (const npc of npcs) {
+    const dx = player.pos.x - npc.spot.x, dz = player.pos.z - npc.spot.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.85 && d > 1e-4) {
+      player.pos.x = npc.spot.x + (dx / d) * 0.85;
+      player.pos.z = npc.spot.z + (dz / d) * 0.85;
+    }
   }
 
   const lim = 90;
@@ -637,6 +764,7 @@ function animatePlayer(dt, moving, sprinting) {
 
 /* --------------------------- camera --------------------------- */
 const camTarget = new THREE.Vector3();
+let camSnap = true;
 const CAM = { dist: 4.6, pivot: 1.55, shoulder: 0.95, aim: 1.85 };
 
 function updateCamera(dt) {
@@ -653,11 +781,12 @@ function updateCamera(dt) {
     player.pos.z - dir.z * back + side.z * CAM.shoulder);
   want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
 
-  camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
+  if (camSnap) camera.position.copy(want); else camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
   camTarget.lerp(new THREE.Vector3(
     player.pos.x + side.x * CAM.aim,
     pivotY,
-    player.pos.z + side.z * CAM.aim), 1 - Math.pow(0.0015, dt));
+    player.pos.z + side.z * CAM.aim), camSnap ? 1 : 1 - Math.pow(0.0015, dt));
+  camSnap = false;
   camera.lookAt(camTarget);
 }
 
@@ -693,6 +822,7 @@ function frame() {
     playerAttack(dt);
     updateMonster(dt);
     updateDrops(dt);
+    updateNpcs(dt);
   }
   world.update(dt);
   world.followSun(player.pos);
@@ -733,6 +863,17 @@ function pause() {
   document.exitPointerLock?.();
   document.getElementById('start').classList.remove('hidden');
 }
+function talk() {
+  if (ui.shopOpen) { ui.closeShop(); return; }
+  if (!nearNpc || !state.running) return;
+  document.exitPointerLock?.();
+  if (nearNpc.kind === 'healer') ui.openHealer(game);
+  else {
+    if (!game.stock.length || game.stockLevel !== state.level) game.restock();
+    ui.openMerchant(game);
+  }
+}
+
 function toggleBag() {
   const open = ui.toggleInventory();
   if (open) document.exitPointerLock?.();
@@ -740,6 +881,7 @@ function toggleBag() {
 }
 function respawn() {
   state.dead = false;
+  camSnap = true;
   state.hp = totals().maxHp;
   state.stamina = totals().maxStamina;
   player.pos.set(0, 0, 6);
@@ -761,6 +903,7 @@ game.equip(starter);
 state.hp = totals().maxHp;
 state.stamina = totals().maxStamina;
 ui.renderAll();
+ui.setGold(state.gold);
 
 // pose the world before the player presses Spil
 player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z);
@@ -770,12 +913,15 @@ frame();
 
 window.__djPose = () => animatePlayer(0.016, false, false);
 window.__djHeightAt = heightAt;
+window.__djLook = (yaw, pitch) => { look.yaw = yaw; look.pitch = pitch; camSnap = true; };
 window.__djCam = (dt, pitch) => { if (pitch !== undefined) look.pitch = pitch; updateCamera(dt); };
 
 // expose a little of the state for automated look-tests
 window.__dj = {
   state, player, camera, scene, totals, screenOf, ui, game, drops,
   get gameTime() { return gameTime; },
+  town: TOWN,
+  inTown,
   get lootDropped() { return lootDropped; },
   get monster() { return monster; },
   attack() { wantAttack = true; },

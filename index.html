@@ -25,14 +25,15 @@
         </div>
       </div>
 
-      <!-- top-right: title -->
-      <div class="title-plate"><span>Devil's</span><span>Journey</span></div>
+      <!-- purse -->
+      <div class="purse"><span class="coin"></span><span id="gold">0</span></div>
 
       <!-- floating combat text + enemy bars are injected here -->
       <div id="world-ui"></div>
 
       <!-- centre: hit marker / hints -->
       <div id="toast"></div>
+      <div id="prompt" class="hidden"></div>
 
       <!-- bottom: item panel + hotbar + xp -->
       <div class="dock">
@@ -76,6 +77,16 @@
       </div>
     </div>
 
+    <!-- ===== HEALER / MERCHANT ===== -->
+    <div id="shop" class="panel hidden">
+      <div class="panel-head">
+        <h2 id="shop-title">Handelsmand</h2>
+        <div class="purse purse-inline"><span class="coin"></span><span id="shop-gold">0</span></div>
+        <button id="shop-close" title="Luk (Esc)">✕</button>
+      </div>
+      <div class="panel-body" id="shop-body"></div>
+    </div>
+
     <!-- ===== START / PAUSE ===== -->
     <div id="start" class="overlay">
       <div class="start-card">
@@ -87,9 +98,10 @@
           <li><b>Venstre klik</b> slå</li>
           <li><b>Shift</b> løb</li>
           <li><b>I</b> taske · <b>1–7</b> hurtigfelt</li>
+          <li><b>E</b> tal med folk i byen</li>
         </ul>
         <button id="play">Spil</button>
-        <p class="hint">Tryk Esc for at holde pause</p>
+        <p class="hint">Byen ligger bag dig — der kan du hele dig og handle. Tryk Esc for at holde pause.</p>
       </div>
     </div>
 

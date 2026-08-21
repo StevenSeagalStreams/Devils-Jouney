@@ -204,6 +204,67 @@ check('stepping out of a wind-up avoids it', heavyDodged < 1, `-${heavyDodged.to
 check('the heavy hits harder than the light', heavyHit > lightHit * 2,
   `heavy -${heavyHit.toFixed(0)} vs light -${lightHit.toFixed(0)}`);
 
+// --- the town is a safe zone with two working shops
+const townChecks = await page.evaluate(async () => {
+  const d = window.__dj;
+  const out = {};
+  out.titleGone = !document.querySelector('.title-plate');
+
+  // stand in the middle of town and let the monster swing at you
+  d.player.pos.set(d.town.x, 0, d.town.z);
+  d.state.hp = 100;
+  d.monster.pos.set(d.town.x, 0, d.town.z + 1.5);
+  d.forceAttack('heavy');
+  return out;
+});
+await gameWait(2.0);
+const safe = await page.evaluate(() => {
+  const d = window.__dj;
+  return {
+    hp: d.state.hp,
+    monsterDist: +Math.hypot(d.monster.pos.x - d.town.x, d.monster.pos.z - d.town.z).toFixed(1),
+    radius: d.town.radius,
+  };
+});
+check('the game title is gone from the HUD', townChecks.titleGone);
+check('the town is a safe zone', safe.hp >= 100, `hp ${Math.round(safe.hp)}`);
+check('monsters are pushed out of the town', safe.monsterDist > safe.radius,
+  `${safe.monsterDist}m from the centre, fence at ${safe.radius}m`);
+
+// healer
+const heal = await page.evaluate(() => {
+  const d = window.__dj;
+  d.state.hp = 40;
+  d.state.gold = 200;
+  const cost = d.game.healCost();
+  d.game.buyHeal();
+  return { cost, hp: Math.round(d.state.hp), max: d.totals().maxHp, gold: d.state.gold };
+});
+check('the healer restores life for gold', heal.hp === heal.max && heal.gold === 200 - heal.cost,
+  `${heal.cost} guld -> ${heal.hp}/${heal.max}, ${heal.gold} left`);
+
+// merchant
+const trade = await page.evaluate(() => {
+  const d = window.__dj;
+  d.state.gold = 500;
+  d.game.restock();
+  const item = d.game.stock[0];
+  const price = d.game.buyPrice(item);
+  d.game.buyItem(item);
+  const afterBuy = { gold: d.state.gold, owns: d.state.bag.includes(item) };
+  const back = d.game.sellPrice(item);
+  d.game.sellItem(item);
+  return { price, back, afterBuy, gold: d.state.gold, stillOwns: d.state.bag.includes(item) };
+});
+check('you can buy from the merchant', trade.afterBuy.owns && trade.afterBuy.gold === 500 - trade.price,
+  `paid ${trade.price}`);
+check('you can sell to the merchant', !trade.stillOwns && trade.gold === 500 - trade.price + trade.back,
+  `got ${trade.back} back`);
+
+// leave town again so the remaining checks fight normally
+await page.evaluate(() => { window.__dj.player.pos.set(0, 0, 0); window.__dj.monster.cooldown = 0; });
+await gameWait(0.3);
+
 // --- taking damage
 const hpBefore = await page.evaluate(() => {
   const d = window.__dj;

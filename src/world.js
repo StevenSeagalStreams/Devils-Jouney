@@ -18,8 +18,10 @@ function valueNoise(x, z) {
 
 export const WORLD_SIZE = 260;
 
-/** Ground height at any point. Flat-ish arena in the middle, swells further out. */
-export function heightAt(x, z) {
+/** The safe town: level ground, no trees, and no monsters. */
+export const TOWN = { x: 0, z: 30, radius: 13 };
+
+function rawHeight(x, z) {
   const big = (valueNoise(x * 0.012, z * 0.012) - 0.5) * 9.0;
   const mid = (valueNoise(x * 0.045, z * 0.045) - 0.5) * 2.4;
   const fine = (valueNoise(x * 0.16, z * 0.16) - 0.5) * 0.35;
@@ -27,6 +29,20 @@ export function heightAt(x, z) {
   const d = Math.hypot(x, z);
   const flat = THREE.MathUtils.clamp((d - 10) / 24, 0, 1);
   return (big + mid) * flat + fine;
+}
+
+const TOWN_Y = rawHeight(TOWN.x, TOWN.z);
+
+/** Distance from the town centre; < TOWN.radius means you are inside it. */
+export function townDistance(x, z) {
+  return Math.hypot(x - TOWN.x, z - TOWN.z);
+}
+
+/** Ground height at any point, levelled off across the town and its approach. */
+export function heightAt(x, z) {
+  const h = rawHeight(x, z);
+  const t = THREE.MathUtils.clamp((townDistance(x, z) - TOWN.radius) / 9, 0, 1);
+  return THREE.MathUtils.lerp(TOWN_Y, h, t * t * (3 - 2 * t));
 }
 
 export function groundNormal(x, z) {
@@ -245,6 +261,7 @@ export function createWorld(scene) {
     const a = rng() * Math.PI * 2;
     const r = 24 + rng() * 150;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (townDistance(x, z) < TOWN.radius + 3) continue;
     const t = makeTree(rng);
     t.position.set(x, heightAt(x, z), z);
     const s = 0.68 + rng() * 0.42;
@@ -257,6 +274,7 @@ export function createWorld(scene) {
     const a = rng() * Math.PI * 2;
     const r = 8 + rng() * 130;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (townDistance(x, z) < TOWN.radius + 2) continue;
     const rock = makeRock(rng);
     rock.position.set(x, heightAt(x, z) + 0.1, z);
     props.add(rock);

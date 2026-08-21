@@ -55,14 +55,54 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .bar-stamina{height:22px;width:390px}
 .bar-stamina .fill{background:linear-gradient(180deg,#ffcb4d,var(--sta) 45%,var(--sta-dark))}
 
-/* title */
-.title-plate{
-  z-index:2;position:absolute;top:16px;right:26px;text-align:right;line-height:.95;
-  font-family:Georgia,"Times New Roman",serif;font-weight:700;
-  font-size:58px;letter-spacing:1px;font-variant:small-caps;text-transform:capitalize;
-  color:#fff;text-shadow:0 3px 10px rgba(0,0,0,.55),0 1px 0 rgba(0,0,0,.35);
+/* purse */
+.purse{
+  position:absolute;top:92px;left:14px;display:flex;align-items:center;gap:7px;
+  font-size:19px;font-weight:700;color:#ffd76a;text-shadow:0 2px 4px rgba(0,0,0,.85);
 }
-.title-plate span{display:block}
+.purse .coin{
+  width:17px;height:17px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#ffe9a8,#d19a1e 70%,#a06f10);
+  box-shadow:0 1px 3px rgba(0,0,0,.6), inset 0 0 3px rgba(255,255,255,.5);
+}
+.purse-inline{position:static;font-size:18px}
+
+/* interaction prompt */
+#prompt{
+  position:absolute;left:50%;bottom:150px;transform:translateX(-50%);
+  padding:8px 16px;border-radius:8px;font-size:17px;
+  background:rgba(14,14,14,.86);border:2px solid #4a4a4a;
+  color:#f2efe6;text-shadow:0 1px 2px rgba(0,0,0,.8);white-space:nowrap;
+}
+#prompt.hidden{display:none}
+#prompt b{color:#ffd76a}
+
+/* shop */
+.shop-col{flex:1;min-width:0}
+.shop-list{display:flex;flex-direction:column;gap:8px;max-height:330px;overflow:auto;padding-right:4px;
+  scrollbar-width:thin;scrollbar-color:#5a5a5a #191919}
+.shop-row{
+  display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;
+  background:#161616;border:2px solid #2c2c2c;
+}
+.shop-row canvas{width:44px;height:44px;flex:none}
+.shop-row .info{flex:1;min-width:0}
+.shop-row .nm{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shop-row .st{font-size:12.5px;color:#c9c4b6}
+.shop-row button{
+  flex:none;padding:7px 13px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;
+  color:#1a1206;background:linear-gradient(180deg,#ffd473,#e0a223);border:2px solid #8a6210;
+}
+.shop-row button:disabled{background:#3a3a3a;color:#8a8a8a;border-color:#2a2a2a;cursor:not-allowed}
+.shop-empty{color:#8a8579;font-size:14px;padding:10px 2px}
+.heal-card{text-align:center;padding:10px 4px 4px}
+.heal-card p{color:#ded9cb;margin-bottom:14px;line-height:1.5}
+.heal-card .big{
+  font-size:19px;font-weight:700;padding:11px 26px;border-radius:8px;cursor:pointer;
+  color:#1a1206;background:linear-gradient(180deg,#8fe08f,#3fa84f);border:2px solid #1f6b2c;
+}
+.heal-card .big:disabled{background:#3a3a3a;color:#8a8a8a;border-color:#2a2a2a;cursor:not-allowed}
+.panel-head .purse{margin-left:auto;margin-right:12px}
 
 /* enemy health bars in world space */
 .enemy-bar{
@@ -85,6 +125,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .float-num.hurt{color:#ff6b6b}
 .float-num.xp{color:#b46bf0;font-size:18px}
 .float-num.loot{color:#6fd44a;font-size:18px}
+.float-num.gold{color:#ffc93c;font-size:18px}
 
 /* toast */
 #toast{
@@ -206,7 +247,6 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   .bar{width:300px}
   .bar-stamina{width:264px}
   .slot.slot-big{width:56px;height:56px}
-  .title-plate{font-size:38px}
   .dock-item{min-width:240px}
   .slot{width:48px;height:48px}
 }

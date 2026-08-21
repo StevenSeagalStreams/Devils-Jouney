@@ -18,6 +18,9 @@ export class UI {
     $('#hud').prepend(this.vignette);
 
     this.enemyBars = new Map();
+    this.shop = $('#shop');
+    this.prompt = $('#prompt');
+    $('#shop-close').addEventListener('click', () => this.closeShop());
     this.buildHotbar();
     this.bindPanel();
   }
@@ -222,6 +225,94 @@ export class UI {
   removeEnemyBar(id) {
     const bar = this.enemyBars.get(id);
     if (bar) { bar.remove(); this.enemyBars.delete(id); }
+  }
+
+  /* ---------------- town ---------------- */
+  setGold(gold) {
+    $('#gold').textContent = gold;
+    $('#shop-gold').textContent = gold;
+  }
+
+  showPrompt(html) {
+    this.prompt.innerHTML = html;
+    this.prompt.classList.remove('hidden');
+  }
+
+  hidePrompt() { this.prompt.classList.add('hidden'); }
+
+  get shopOpen() { return !this.shop.classList.contains('hidden'); }
+
+  closeShop() {
+    this.shop.classList.add('hidden');
+    this.tooltip.style.display = 'none';
+    this.onShopClose?.();
+  }
+
+  /** Healer: one button, priced off the life you are missing. */
+  openHealer(game) {
+    const t = game.totals();
+    const missing = Math.max(0, t.maxHp - game.state.hp);
+    const cost = game.healCost();
+    const afford = game.state.gold >= cost;
+    $('#shop-title').textContent = 'Helbrederen';
+    $('#shop-body').innerHTML = `
+      <div class="heal-card shop-col">
+        <p>Du har <b>${Math.ceil(game.state.hp)} / ${t.maxHp}</b> liv.<br>
+        ${missing <= 0 ? 'Du fejler ikke noget.' : `Jeg gør dig hel igen for <b>${cost}</b> guld.`}</p>
+        <button class="big" id="heal-btn" ${missing <= 0 || !afford ? 'disabled' : ''}>
+          ${missing <= 0 ? 'Du er rask' : afford ? `Hel mig (${cost} guld)` : `Ikke nok guld (${cost})`}
+        </button>
+      </div>`;
+    const btn = $('#heal-btn');
+    if (btn) btn.addEventListener('click', () => { game.buyHeal(); this.openHealer(game); });
+    this.shop.classList.remove('hidden');
+    this.setGold(game.state.gold);
+  }
+
+  /** Merchant: his stock on the left, your bag on the right. */
+  openMerchant(game) {
+    $('#shop-title').textContent = 'Handelsmanden';
+    const row = (item, label, price, enabled, onClick) => {
+      const el = document.createElement('div');
+      el.className = 'shop-row';
+      el.style.setProperty('--rare', item.color);
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      el.appendChild(c);
+      drawItemIcon(c, item);
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML = `<div class="nm" style="color:${item.color}">${item.name}</div>
+        <div class="st">${statLines(item).join(' · ')}</div>`;
+      el.appendChild(info);
+      const btn = document.createElement('button');
+      btn.textContent = `${label} ${price}`;
+      btn.disabled = !enabled;
+      btn.addEventListener('click', onClick);
+      el.appendChild(btn);
+      this.attachTip(el, () => item);
+      return el;
+    };
+
+    const body = $('#shop-body');
+    body.innerHTML = `
+      <div class="shop-col"><div class="col-label">Til salg</div><div class="shop-list" id="buy-list"></div></div>
+      <div class="shop-col"><div class="col-label">Dine ting</div><div class="shop-list" id="sell-list"></div></div>`;
+    const buy = $('#buy-list'), sell = $('#sell-list');
+
+    if (!game.stock.length) buy.innerHTML = '<div class="shop-empty">Udsolgt for i dag.</div>';
+    for (const item of game.stock) {
+      const price = game.buyPrice(item);
+      buy.appendChild(row(item, 'Køb', price, game.state.gold >= price,
+        () => { game.buyItem(item); this.openMerchant(game); }));
+    }
+    if (!game.state.bag.length) sell.innerHTML = '<div class="shop-empty">Din taske er tom.</div>';
+    for (const item of game.state.bag) {
+      sell.appendChild(row(item, 'Sælg', game.sellPrice(item), true,
+        () => { game.sellItem(item); this.openMerchant(game); }));
+    }
+    this.shop.classList.remove('hidden');
+    this.setGold(game.state.gold);
   }
 
   toast(msg, ms = 1600) {
