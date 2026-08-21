@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<title>Devil's Journey</title>
+<link rel="stylesheet" href="src/style.css" />
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+</head>
+<body>
+  <div id="game">
+    <canvas id="scene"></canvas>
+
+    <!-- ===== HUD ===== -->
+    <div id="hud">
+
+      <!-- top-left: portrait + health + stamina -->
+      <div class="vitals">
+        <div class="portrait"><div class="portrait-face"></div></div>
+        <div class="bars">
+          <div class="bar bar-health"><div class="fill" id="health-fill"></div></div>
+          <div class="bar bar-stamina"><div class="fill" id="stamina-fill"></div></div>
+        </div>
+      </div>
+
+      <!-- top-right: title -->
+      <div class="title-plate"><span>Devil's</span><span>Journey</span></div>
+
+      <!-- floating combat text + enemy bars are injected here -->
+      <div id="world-ui"></div>
+
+      <!-- centre: hit marker / hints -->
+      <div id="toast"></div>
+
+      <!-- bottom: item panel + hotbar + xp -->
+      <div class="dock">
+        <div class="dock-item" id="dock-item">
+          <div class="slot slot-big" id="equipped-slot"><canvas class="icon" width="96" height="96"></canvas></div>
+          <div class="dock-text">
+            <div class="item-name" id="equipped-name">Normal Sværd 1</div>
+            <div class="item-stats" id="equipped-stats"></div>
+          </div>
+        </div>
+        <div class="dock-right">
+          <div class="hotbar" id="hotbar"></div>
+          <div class="xp-row">
+            <div class="xp-bar"><div class="fill" id="xp-fill"></div></div>
+            <div class="level" id="level-label">1</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== INVENTORY ===== -->
+    <div id="inventory" class="panel hidden">
+      <div class="panel-head">
+        <h2>Taske</h2>
+        <button id="inv-close" title="Luk (I)">✕</button>
+      </div>
+      <div class="panel-body">
+        <div class="equip-col">
+          <div class="col-label">Udstyr</div>
+          <div class="equip-slots">
+            <div class="slot equip" data-equip="weapon"><span class="ph">Våben</span></div>
+            <div class="slot equip" data-equip="armor"><span class="ph">Rustning</span></div>
+            <div class="slot equip" data-equip="trinket"><span class="ph">Amulet</span></div>
+          </div>
+          <div class="stat-block" id="stat-block"></div>
+        </div>
+        <div class="bag-col">
+          <div class="col-label">Ting <span class="dim">(klik for at tage på · højreklik for at smide ud)</span></div>
+          <div class="bag" id="bag"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== START / PAUSE ===== -->
+    <div id="start" class="overlay">
+      <div class="start-card">
+        <h1>Devil's Journey</h1>
+        <p class="tag">Slå monstre ihjel. Bliv stærkere. Find bedre grej.</p>
+        <ul class="keys">
+          <li><b>W A S D</b> gå</li>
+          <li><b>Mus</b> kig dig omkring</li>
+          <li><b>Venstre klik</b> slå</li>
+          <li><b>Shift</b> løb</li>
+          <li><b>I</b> taske · <b>1–8</b> hurtigfelt</li>
+        </ul>
+        <button id="play">Spil</button>
+        <p class="hint">Tryk Esc for at holde pause</p>
+      </div>
+    </div>
+
+    <div id="death" class="overlay hidden">
+      <div class="start-card">
+        <h1 class="dead">Du døde</h1>
+        <p class="tag">Monsteret var stærkere denne gang.</p>
+        <button id="respawn">Prøv igen</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

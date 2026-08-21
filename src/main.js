@@ -1,0 +1,652 @@
+import * as THREE from 'three';
+import { createWorld, heightAt } from './world.js';
+import { createPlayerModel, createMonsterModel, createWeaponMesh } from './characters.js';
+import { makeItem, itemScore, RARITIES } from './items.js';
+import { UI } from './ui.js';
+
+/* =================================================================== *
+ *  Devil's Journey — single-monster demo
+ *  WASD to move · mouse to look · left click to swing · I for the bag
+ * =================================================================== */
+
+const clock = new THREE.Clock();
+let gameTime = 0;
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.1, 1200);
+const world = createWorld(scene);
+
+/* --------------------------- state --------------------------- */
+const state = {
+  level: 1,
+  xp: 0,
+  hp: 100,
+  stamina: 100,
+  bag: [],
+  hotbar: [],
+  equipped: { weapon: null, armor: null, trinket: null },
+  running: false,
+  dead: false,
+};
+
+const BASE = { hp: 100, damage: 6, stamina: 100, speed: 4.2 };
+const xpForLevel = lvl => 40 + (lvl - 1) * 32;
+
+function totals() {
+  let liv = 0, skade = 0, smidighed = 0, styrke = 0, tier = 0;
+  for (const item of Object.values(state.equipped)) {
+    if (!item) continue;
+    liv += item.stats.liv || 0;
+    skade += item.stats.skade || 0;
+    smidighed += item.stats.smidighed || 0;
+    styrke += item.stats.styrke || 0;
+    if (item.slot === 'weapon') tier = item.tier;
+  }
+  const lvl = state.level;
+  return {
+    maxHp: BASE.hp + liv + (lvl - 1) * 12,
+    damage: BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 2,
+    smidighed, styrke, liv, tier,
+    maxStamina: BASE.stamina + smidighed * 1.5,
+    speed: BASE.speed + smidighed * 0.03,
+    attackSpeed: 1 + smidighed * 0.008,
+  };
+}
+
+/* --------------------------- player --------------------------- */
+const player = {
+  obj: createPlayerModel(),
+  pos: new THREE.Vector3(0, 0, 6),
+  yaw: Math.PI,
+  vel: new THREE.Vector3(),
+  walkPhase: 0,
+  attackTime: -1,
+  attackDur: 0.52,
+  hasHit: false,
+  hurtFlash: 0,
+};
+scene.add(player.obj);
+
+/* --------------------------- monster --------------------------- */
+let monsterSeq = 0;
+function spawnMonster(level) {
+  const m = {
+    id: ++monsterSeq,
+    obj: createMonsterModel((level - 1) % 3),
+    pos: new THREE.Vector3(0, 0, -8),
+    yaw: 0,
+    level,
+    maxHp: 34 + (level - 1) * 16,
+    hp: 34 + (level - 1) * 16,
+    damage: 6 + (level - 1) * 2.5,
+    speed: 2.5,
+    state: 'idle',
+    stateT: 0,
+    attackT: -1,
+    hasHit: false,
+    hurt: 0,
+    walkPhase: 0,
+    wander: new THREE.Vector3(),
+    dead: false,
+    name: `Skovtrold ${level}`,
+  };
+  if (monsterSeq === 1) {
+    m.pos.set(0, 0, -11);
+  } else {
+    const a = Math.random() * Math.PI * 2;
+    const r = 11 + Math.random() * 7;
+    m.pos.set(player.pos.x + Math.cos(a) * r, 0, player.pos.z + Math.sin(a) * r);
+  }
+  m.obj.position.copy(m.pos);
+  m.obj.scale.setScalar(0.95 + Math.min(level, 8) * 0.03);
+  scene.add(m.obj);
+  return m;
+}
+let monster = spawnMonster(1);
+let respawnT = -1;
+
+/* --------------------------- loot on the ground --------------------------- */
+const drops = [];
+let lootDropped = 0;
+function dropLoot(item, pos) {
+  lootDropped++;
+  const g = new THREE.Group();
+  const mesh = item.type === 'weapon'
+    ? createWeaponMesh(item.tier)
+    : new THREE.Mesh(
+      item.type === 'armor' ? new THREE.BoxGeometry(0.5, 0.55, 0.3) : new THREE.OctahedronGeometry(0.28),
+      new THREE.MeshLambertMaterial({ color: item.color, flatShading: true }));
+  mesh.scale.setScalar(item.type === 'weapon' ? 0.55 : 1);
+  g.add(mesh);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.3, 3.2, 10, 1, true),
+    new THREE.MeshBasicMaterial({ color: item.color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+  beam.position.y = 1.6;
+  g.add(beam);
+  g.position.set(pos.x, heightAt(pos.x, pos.z) + 0.7, pos.z);
+  scene.add(g);
+  drops.push({ item, obj: g, t: 0 });
+}
+
+/* --------------------------- input --------------------------- */
+const keys = new Set();
+
+let wantAttack = false;
+const look = { yaw: Math.PI, pitch: -0.18 };
+
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'i' || k === 'tab') { e.preventDefault(); toggleBag(); return; }
+  if (k === 'escape') { pause(); return; }
+  if (k >= '2' && k <= '8') {
+    const item = state.hotbar[+k - 2];
+    if (item) equip(item);
+    return;
+  }
+  keys.add(k);
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 0) {
+    if (!state.running) return;
+    if (document.pointerLockElement !== canvas) { canvas.requestPointerLock(); return; }
+    wantAttack = true;
+  }
+});
+addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== canvas) return;
+  look.yaw -= e.movementX * 0.0025;
+  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.002, -0.75, 0.45);
+});
+// Only pause when a lock we actually held goes away — some browsers (and
+// headless runs) simply deny the request, and that must not stop the game.
+let hadLock = false;
+document.addEventListener('pointerlockchange', () => {
+  const locked = document.pointerLockElement === canvas;
+  if (!locked && hadLock && state.running && !ui.inventoryOpen) pause();
+  hadLock = locked;
+});
+
+// Fallback look control when pointer lock is unavailable: drag with the right
+// mouse button (left stays free for attacking).
+let dragging = false;
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => { if (e.button === 2) dragging = true; });
+addEventListener('mouseup', e => { if (e.button === 2) dragging = false; });
+addEventListener('mousemove', e => {
+  if (!dragging || document.pointerLockElement === canvas) return;
+  look.yaw -= e.movementX * 0.004;
+  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.003, -0.75, 0.45);
+});
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+renderer.setSize(innerWidth, innerHeight);
+
+/* --------------------------- game api for UI --------------------------- */
+const game = {
+  state,
+  totals,
+  equip(item) {
+    const prev = state.equipped[item.slot];
+    const i = state.bag.indexOf(item);
+    if (i >= 0) state.bag.splice(i, 1);
+    state.equipped[item.slot] = item;
+    if (prev) state.bag.unshift(prev);
+    if (item.slot === 'weapon') player.obj.userData.setWeaponTier(item.tier);
+    syncHotbar();
+    ui.renderAll();
+    ui.toast(`Tog ${item.name} på`, 1200);
+  },
+  unequip(slot) {
+    const item = state.equipped[slot];
+    if (!item) return;
+    state.equipped[slot] = null;
+    state.bag.unshift(item);
+    if (slot === 'weapon') player.obj.userData.setWeaponTier(0);
+    syncHotbar();
+    ui.renderAll();
+  },
+  dropItem(item) {
+    const i = state.bag.indexOf(item);
+    if (i < 0) return;
+    state.bag.splice(i, 1);
+    syncHotbar();
+    ui.renderAll();
+    ui.toast(`Smed ${item.name} væk`, 1100);
+  },
+};
+
+const ui = new UI(game);
+
+function syncHotbar() {
+  state.hotbar = state.bag.slice(0, 7);
+}
+
+/* --------------------------- combat helpers --------------------------- */
+const tmpV = new THREE.Vector3();
+function screenOf(v3, yOffset = 0) {
+  tmpV.copy(v3);
+  tmpV.y += yOffset;
+  tmpV.project(camera);
+  return {
+    x: (tmpV.x * 0.5 + 0.5) * innerWidth,
+    y: (-tmpV.y * 0.5 + 0.5) * innerHeight,
+    visible: tmpV.z < 1,
+  };
+}
+
+function gainXp(amount) {
+  state.xp += amount;
+  let leveled = false;
+  while (state.xp >= xpForLevel(state.level)) {
+    state.xp -= xpForLevel(state.level);
+    state.level++;
+    leveled = true;
+  }
+  if (leveled) {
+    state.hp = totals().maxHp;
+    state.stamina = totals().maxStamina;
+    ui.toast(`Niveau ${state.level}!`, 1800);
+    ui.floatText(`Niveau ${state.level}`, screenOf(player.pos, 2.4), 'xp');
+    ui.renderStats();
+  }
+}
+
+function damageMonster(amount, crit) {
+  monster.hp -= amount;
+  monster.hurt = 0.18;
+  ui.floatText(`${amount}`, screenOf(monster.pos, 2.2), crit ? 'crit' : 'dmg');
+  if (monster.hp <= 0) killMonster();
+}
+
+function killMonster() {
+  monster.dead = true;
+  monster.state = 'dead';
+  monster.stateT = 0;
+  const xp = 18 + monster.level * 8;
+  gainXp(xp);
+  ui.floatText(`+${xp} xp`, screenOf(monster.pos, 2.6), 'xp');
+  ui.removeEnemyBar(monster.id);
+
+  // loot: always something small, sometimes a real upgrade
+  const roll = Math.random();
+  const type = roll < 0.55 ? 'weapon' : roll < 0.85 ? 'armor' : 'trinket';
+  const item = makeItem(type, Math.max(1, state.level), Math.random);
+  dropLoot(item, monster.pos);
+  respawnT = 3.5;
+}
+
+function playerAttack(dt) {
+  const t = totals();
+  if (wantAttack && player.attackTime < 0 && state.stamina >= 12) {
+    player.attackTime = 0;
+    player.attackDur = 0.52 / t.attackSpeed;
+    player.hasHit = false;
+    state.stamina -= 12;
+  }
+  wantAttack = false;
+  if (player.attackTime < 0) return;
+
+  player.attackTime += dt;
+  const p = player.attackTime / player.attackDur;
+
+  if (!player.hasHit && p > 0.34) {
+    player.hasHit = true;
+    if (!monster.dead) {
+      const to = tmpV.copy(monster.pos).sub(player.pos);
+      const dist = to.length();
+      const facing = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+      const dot = to.normalize().dot(facing);
+      if (dist < 3.0 && dot > 0.35) {
+        const crit = Math.random() < 0.12 + t.smidighed * 0.004;
+        const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
+        damageMonster(Math.max(1, Math.round(raw)), crit);
+      } else {
+        ui.floatText('svup!', screenOf(player.pos, 2.0), 'dmg');
+      }
+    }
+  }
+  if (player.attackTime > player.attackDur) player.attackTime = -1;
+}
+
+function hurtPlayer(amount) {
+  state.hp -= amount;
+  player.hurtFlash = 0.25;
+  ui.flashDamage();
+  ui.floatText(`-${Math.round(amount)}`, screenOf(player.pos, 2.2), 'hurt');
+  if (state.hp <= 0 && !state.dead) die();
+}
+
+function die() {
+  state.dead = true;
+  state.running = false;
+  document.exitPointerLock?.();
+  document.getElementById('death').classList.remove('hidden');
+}
+
+/* --------------------------- monster AI --------------------------- */
+function updateMonster(dt) {
+  const m = monster;
+  m.stateT += dt;
+  m.hurt = Math.max(0, m.hurt - dt);
+
+  if (m.state === 'dead') {
+    m.obj.rotation.x = THREE.MathUtils.lerp(m.obj.rotation.x, -Math.PI / 2.2, dt * 6);
+    m.obj.position.y = THREE.MathUtils.lerp(m.obj.position.y, heightAt(m.pos.x, m.pos.z) - 0.3, dt * 4);
+    if (respawnT > 0) {
+      respawnT -= dt;
+      if (respawnT <= 0) {
+        scene.remove(m.obj);
+        monster = spawnMonster(Math.max(1, state.level));
+        respawnT = -1;
+        ui.toast('Et nyt monster dukker op', 1400);
+      }
+    }
+    return;
+  }
+
+  const toPlayer = tmpV.copy(player.pos).sub(m.pos);
+  const dist = toPlayer.length();
+  toPlayer.normalize();
+
+  if (m.state === 'idle') {
+    if (m.stateT > 2.5) {
+      m.stateT = 0;
+      const a = Math.random() * Math.PI * 2;
+      m.wander.set(Math.cos(a), 0, Math.sin(a));
+    }
+    // gentle drift so it never looks frozen
+    const step = m.wander.clone().multiplyScalar(0.7 * dt);
+    m.pos.add(step);
+    if (step.lengthSq() > 1e-6) m.yaw = Math.atan2(step.x, step.z);
+    m.walkPhase += dt * 3;
+    if (dist < 12) { m.state = 'chase'; m.stateT = 0; }
+  } else if (m.state === 'chase') {
+    m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * 6));
+    if (dist > 1.9) {
+      m.pos.addScaledVector(toPlayer, m.speed * dt);
+      m.walkPhase += dt * 8;
+    }
+    if (dist < 2.3) { m.state = 'attack'; m.stateT = 0; m.attackT = 0; m.hasHit = false; }
+    if (dist > 20) { m.state = 'idle'; m.stateT = 0; }
+  } else if (m.state === 'attack') {
+    m.attackT += dt;
+    m.yaw = THREE.MathUtils.lerp(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), Math.min(1, dt * 4));
+    if (!m.hasHit && m.attackT > 0.45) {
+      m.hasHit = true;
+      if (dist < 2.9) hurtPlayer(m.damage * (0.85 + Math.random() * 0.3));
+    }
+    if (m.attackT > 1.25) { m.state = dist < 12 ? 'chase' : 'idle'; m.stateT = 0; m.attackT = -1; }
+  }
+
+  // never let it stand inside the player
+  const sep = tmpV.copy(m.pos).sub(player.pos);
+  const sepD = sep.length();
+  if (sepD < 1.5 && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), 1.5);
+
+  // keep it inside the arena
+  const lim = 70;
+  m.pos.x = THREE.MathUtils.clamp(m.pos.x, -lim, lim);
+  m.pos.z = THREE.MathUtils.clamp(m.pos.z, -lim, lim);
+  m.obj.position.set(m.pos.x, heightAt(m.pos.x, m.pos.z), m.pos.z);
+  m.obj.rotation.y = m.yaw;
+  animateMonster(m, dt);
+}
+
+function animateMonster(m, dt) {
+  const u = m.obj.userData;
+  const swing = Math.sin(m.walkPhase) * 0.55;
+  u.legR.hip.rotation.x = swing;
+  u.legL.hip.rotation.x = -swing;
+  u.legR.knee.rotation.x = Math.max(0, -swing) * 0.6;
+  u.legL.knee.rotation.x = Math.max(0, swing) * 0.6;
+  u.body.position.y = 0.95 + Math.abs(Math.sin(m.walkPhase)) * 0.06;
+  u.headPivot.rotation.x = -0.1 + Math.sin(m.walkPhase * 0.5) * 0.05;
+
+  if (m.state === 'attack' && m.attackT >= 0) {
+    const p = THREE.MathUtils.clamp(m.attackT / 0.9, 0, 1);
+    const raise = Math.sin(Math.min(p, 0.5) * Math.PI) * 2.0;
+    const strike = p > 0.5 ? (p - 0.5) * 2 : 0;
+    u.armR.shoulder.rotation.x = -raise + strike * 2.4;
+    u.armL.shoulder.rotation.x = -raise * 0.4;
+  } else {
+    const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
+    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, idle, dt * 6);
+    u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, -idle, dt * 6);
+  }
+  // flash white-ish when hit
+  const hurt = m.hurt > 0;
+  m.obj.traverse(o => {
+    if (o.isMesh && o.material && o.material.emissive) {
+      o.material.emissive.setRGB(hurt ? 0.45 : 0, hurt ? 0.1 : 0, hurt ? 0.1 : 0);
+    }
+  });
+}
+
+/* --------------------------- player update --------------------------- */
+function updatePlayer(dt) {
+  const t = totals();
+  const forward = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw));
+  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  const move = new THREE.Vector3();
+  if (keys.has('w')) move.add(forward);
+  if (keys.has('s')) move.sub(forward);
+  if (keys.has('a')) move.sub(right);
+  if (keys.has('d')) move.add(right);
+
+  const sprinting = keys.has('shift') && move.lengthSq() > 0 && state.stamina > 1;
+  let speed = t.speed * (sprinting ? 1.55 : 1) * (player.attackTime >= 0 ? 0.45 : 1);
+  if (move.lengthSq() > 0) {
+    move.normalize();
+    player.pos.addScaledVector(move, speed * dt);
+    player.yaw = THREE.MathUtils.lerp(
+      player.yaw,
+      Math.atan2(move.x, move.z),
+      1 - Math.pow(0.0001, dt));
+    player.walkPhase += dt * (sprinting ? 12 : 8);
+  } else {
+    player.walkPhase += dt * 1.6;
+  }
+
+  // stamina
+  state.stamina = THREE.MathUtils.clamp(
+    state.stamina + (sprinting ? -18 : 14) * dt, 0, t.maxStamina);
+  if (sprinting) state.stamina = Math.max(0, state.stamina);
+
+  // slow health regen out of combat
+  if (monster.dead || player.pos.distanceTo(monster.pos) > 14) {
+    state.hp = Math.min(t.maxHp, state.hp + 3.5 * dt);
+  }
+
+  const lim = 90;
+  player.pos.x = THREE.MathUtils.clamp(player.pos.x, -lim, lim);
+  player.pos.z = THREE.MathUtils.clamp(player.pos.z, -lim, lim);
+  player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z);
+  player.obj.rotation.y = player.yaw;
+  player.hurtFlash = Math.max(0, player.hurtFlash - dt);
+  animatePlayer(dt, move.lengthSq() > 0, sprinting);
+}
+
+function animatePlayer(dt, moving, sprinting) {
+  const u = player.obj.userData;
+  const amp = moving ? (sprinting ? 0.85 : 0.6) : 0.06;
+  const swing = Math.sin(player.walkPhase) * amp;
+  u.legR.hip.rotation.x = swing;
+  u.legL.hip.rotation.x = -swing;
+  u.legR.knee.rotation.x = Math.max(0, -swing) * 0.9;
+  u.legL.knee.rotation.x = Math.max(0, swing) * 0.9;
+  u.hips.position.y = 0.92 + (moving ? Math.abs(Math.sin(player.walkPhase)) * 0.05 : Math.sin(player.walkPhase * 0.8) * 0.012);
+  u.torso.rotation.y = -swing * 0.12;
+  u.neck.rotation.y = swing * 0.06;
+
+  // left arm swings with the walk
+  u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, swing * 0.9, dt * 14);
+  u.armL.elbow.rotation.x = -0.3 - Math.max(0, swing) * 0.4;
+
+  if (player.attackTime >= 0) {
+    const p = player.attackTime / player.attackDur;
+    // wind up over the shoulder, then a fast diagonal slash
+    const wind = Math.sin(Math.min(p / 0.34, 1) * Math.PI * 0.5);
+    const slash = p > 0.34 ? Math.min(1, (p - 0.34) / 0.3) : 0;
+    u.armR.shoulder.rotation.x = -2.1 * wind + slash * 3.0;
+    u.armR.shoulder.rotation.z = -0.5 * wind + slash * 0.7;
+    u.armR.elbow.rotation.x = -0.9 * wind + slash * 0.8;
+    u.torso.rotation.y = -0.35 * wind + slash * 0.7;
+  } else {
+    // relaxed guard: sword held low and slightly out, like the concept art
+    u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.2, dt * 10);
+    u.armR.shoulder.rotation.z = THREE.MathUtils.lerp(u.armR.shoulder.rotation.z, -0.5, dt * 10);
+    u.armR.elbow.rotation.x = THREE.MathUtils.lerp(u.armR.elbow.rotation.x, -0.25, dt * 10);
+  }
+}
+
+/* --------------------------- camera --------------------------- */
+const camTarget = new THREE.Vector3();
+function updateCamera(dt) {
+  const height = 2.0 + look.pitch * 2.0;
+  const dist = 4.6;
+  const back = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw)).multiplyScalar(-dist);
+  const side = new THREE.Vector3(back.z, 0, -back.x).normalize().multiplyScalar(0.95);
+  const ground = heightAt(player.pos.x, player.pos.z);
+  const want = new THREE.Vector3(
+    player.pos.x + back.x + side.x,
+    ground + height,
+    player.pos.z + back.z + side.z);
+  want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
+  camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
+  camTarget.lerp(new THREE.Vector3(
+    player.pos.x + side.x * 1.85,
+    ground + 1.55 + look.pitch * 2.6,
+    player.pos.z + side.z * 1.85), 1 - Math.pow(0.0015, dt));
+  camera.lookAt(camTarget);
+}
+
+/* --------------------------- drops / pickup --------------------------- */
+function updateDrops(dt) {
+  for (let i = drops.length - 1; i >= 0; i--) {
+    const d = drops[i];
+    d.t += dt;
+    d.obj.rotation.y += dt * 1.6;
+    d.obj.position.y = heightAt(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
+    if (player.pos.distanceTo(d.obj.position) < 1.8) {
+      state.bag.unshift(d.item);
+      syncHotbar();
+      // auto-equip if it is clearly better, so the demo stays friendly
+      const cur = state.equipped[d.item.slot];
+      if (!cur || itemScore(d.item) > itemScore(cur)) game.equip(d.item);
+      else { ui.renderAll(); ui.toast(`Fandt ${d.item.name}`, 1300); }
+      ui.floatText(d.item.name, screenOf(d.obj.position, 1.2), 'loot');
+      scene.remove(d.obj);
+      drops.splice(i, 1);
+    }
+  }
+}
+
+/* --------------------------- loop --------------------------- */
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  gameTime += dt;
+
+  if (state.running) {
+    updatePlayer(dt);
+    playerAttack(dt);
+    updateMonster(dt);
+    updateDrops(dt);
+  }
+  world.update(dt);
+  world.followSun(player.pos);
+  if (!window.__djFreeCam) updateCamera(dt);
+
+  // HUD
+  const t = totals();
+  state.hp = Math.min(state.hp, t.maxHp);
+  ui.setBars(
+    THREE.MathUtils.clamp(state.hp / t.maxHp, 0, 1),
+    THREE.MathUtils.clamp(state.stamina / t.maxStamina, 0, 1),
+    THREE.MathUtils.clamp(state.xp / xpForLevel(state.level), 0, 1),
+    state.level);
+
+  if (!monster.dead) {
+    const s = screenOf(monster.pos, 2.35);
+    ui.updateEnemyBar(monster.id, {
+      x: s.x, y: s.y, visible: s.visible,
+      pct: monster.hp / monster.maxHp,
+      name: monster.name,
+    });
+  }
+
+  renderer.render(scene, camera);
+}
+
+/* --------------------------- flow --------------------------- */
+function start() {
+  document.getElementById('start').classList.add('hidden');
+  document.getElementById('death').classList.add('hidden');
+  state.running = true;
+  canvas.requestPointerLock?.();
+}
+function pause() {
+  if (ui.inventoryOpen) { ui.toggleInventory(false); return; }
+  if (!state.running) return;
+  state.running = false;
+  document.exitPointerLock?.();
+  document.getElementById('start').classList.remove('hidden');
+}
+function toggleBag() {
+  const open = ui.toggleInventory();
+  if (open) document.exitPointerLock?.();
+  else if (state.running) canvas.requestPointerLock?.();
+}
+function respawn() {
+  state.dead = false;
+  state.hp = totals().maxHp;
+  state.stamina = totals().maxStamina;
+  player.pos.set(0, 0, 6);
+  if (monster && !monster.dead) {
+    monster.pos.set(0, 0, -14);
+    monster.state = 'idle';
+  }
+  start();
+}
+
+document.getElementById('play').addEventListener('click', start);
+document.getElementById('respawn').addEventListener('click', respawn);
+
+// starting gear, so the dock reads like the concept art from frame one
+const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
+starter.stats = { skade: 14, smidighed: 6 };
+starter.name = 'Normal Sværd 1';
+game.equip(starter);
+ui.renderAll();
+
+// pose the world before the player presses Spil
+player.obj.position.set(player.pos.x, heightAt(player.pos.x, player.pos.z), player.pos.z);
+player.obj.rotation.y = player.yaw;
+updateCamera(1);
+frame();
+
+// expose a little of the state for automated look-tests
+window.__dj = {
+  state, player, camera, scene, totals, screenOf, ui, game, drops,
+  get gameTime() { return gameTime; },
+  get lootDropped() { return lootDropped; },
+  get monster() { return monster; },
+  attack() { wantAttack = true; },
+  give(n = 3) {
+    for (let i = 0; i < n; i++) state.bag.push(makeItem(['weapon', 'armor', 'trinket'][i % 3], state.level));
+    syncHotbar();
+    ui.renderAll();
+  },
+};
