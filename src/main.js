@@ -4,7 +4,7 @@ import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel
 import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
 import { KINDS, statsFor } from './monsters.js';
-import { createMausoleum, createDungeon, clampToRooms, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
+import { createMausoleum, createDungeon, collideMaze, mazeBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
 import { ABILITIES, abilityPower, abilityScale, unlockedAt } from './abilities.js';
 import { UI } from './ui.js';
 
@@ -76,6 +76,11 @@ scene.add(dungeon.group);
 
 let zone = 'overworld';
 
+// the hero carries her own light underground, so no corner is unreadable
+const lantern = new THREE.PointLight('#ffb877', 2.6, 16, 1.25);
+lantern.visible = false;
+scene.add(lantern);
+
 /** Ground height for whichever zone we are standing in. */
 function groundY(x, z) {
   return zone === 'dungeon' ? 0 : heightAt(x, z);
@@ -87,6 +92,7 @@ const ZONES = {
     enter() {
       world.root.visible = true;
       dungeon.group.visible = false;
+      lantern.visible = false;
       player.pos.copy(mausoleum.door);
       player.pos.z -= 2.2;
       spawnOverworld();
@@ -97,7 +103,10 @@ const ZONES = {
     enter() {
       world.root.visible = false;
       dungeon.group.visible = true;
+      lantern.visible = true;
       player.pos.copy(dungeon.spawnSpot);
+      player.yaw = Math.PI;          // facing into the maze, away from the stairs
+      look.yaw = Math.PI;
       spawnDungeon();
     },
   },
@@ -112,6 +121,7 @@ function setZone(next) {
   scene.background = new THREE.Color(z.bg);
   scene.fog = new THREE.Fog(z.fog[0], z.fog[1], z.fog[2]);
   z.enter();
+  doorArmed = false;
   camSnap = true;
   ui.toast(next === 'dungeon' ? 'Gravkammeret' : 'Engen', 1800);
 }
@@ -148,22 +158,23 @@ function updateNpcs(dt) {
   }
   nearNpc = best;
 
-  // the way down, and the way back up
-  nearDoor = null;
-  if (zone === 'overworld') {
-    const d = Math.hypot(player.pos.x - mausoleum.door.x, player.pos.z - mausoleum.door.z);
-    if (d < 2.6) nearDoor = { to: 'dungeon', label: 'gå ned i gravkammeret' };
-  } else {
-    const d = Math.hypot(player.pos.x - dungeon.exitSpot.x, player.pos.z - dungeon.exitSpot.z);
-    if (d < 2.6) nearDoor = { to: 'overworld', label: 'gå op i dagslyset' };
-  }
+  // doorways: step into one and you are through, no key press
+  const door = zone === 'overworld'
+    ? { pos: mausoleum.door, to: 'dungeon', label: 'Ned i gravkammeret', radius: 2.2 }
+    : { pos: dungeon.exitSpot, to: 'overworld', label: 'Op i dagslyset', radius: 2.0 };
+  const doorDist = Math.hypot(player.pos.x - door.pos.x, player.pos.z - door.pos.z);
+  // must step clear of the doorway before it can pull you back the other way
+  if (!doorArmed && doorDist > door.radius + 2.5) doorArmed = true;
+  const atDoor = doorArmed && doorDist < door.radius;
 
   if (ui.shopOpen || ui.inventoryOpen) ui.hidePrompt();
   else if (best) ui.showPrompt(`<b>E</b> — tal med ${best.name} for at ${best.hint}`);
-  else if (nearDoor) ui.showPrompt(`<b>E</b> — ${nearDoor.label}`);
+  else if (doorArmed && doorDist < door.radius + 4) ui.showPrompt(door.label);
   else ui.hidePrompt();
+
+  if (atDoor && state.running) setZone(door.to);
 }
-let nearDoor = null;
+let doorArmed = false;
 
 /* --------------------------- player --------------------------- */
 const player = {
@@ -407,19 +418,9 @@ function updateMonster(m, dt, index) {
     }
   }
 
-  // the town fence turns everything away
-  const townD = townDistance(m.pos.x, m.pos.z);
-  const keepOut = TOWN.radius + 1.5;
-  if (zone === 'overworld' && townD < keepOut) {
-    const away = tmpFacing.set(m.pos.x - TOWN.x, 0, m.pos.z - TOWN.z);
-    if (away.lengthSq() < 1e-6) away.set(0, 0, -1);
-    away.normalize();
-    m.pos.set(TOWN.x + away.x * keepOut, 0, TOWN.z + away.z * keepOut);
-    if (m.state === 'attack') { m.state = 'idle'; m.stateT = 0; m.atk = null; }
-  }
   if (m.state !== 'idle' && inTown()) { m.state = 'idle'; m.stateT = 0; m.atk = null; }
 
-  if (zone === 'dungeon') clampToRooms(m.pos);
+  if (zone === 'dungeon') collideMaze(m.pos, 0.55);
 
   // never stand inside the player
   const sep = tmpV.copy(m.pos).sub(player.pos);
@@ -427,6 +428,17 @@ function updateMonster(m, dt, index) {
   const sepD = sep.length();
   if (sepD < 1.4 && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), 1.4);
   m.pos.y = 0;
+
+  // the town fence turns everything away — applied last so nothing, not even
+  // being shoved off the player, can leave a creature standing inside it
+  const keepOut = TOWN.radius + 1.5;
+  if (zone === 'overworld' && townDistance(m.pos.x, m.pos.z) < keepOut) {
+    const away = tmpFacing.set(m.pos.x - TOWN.x, 0, m.pos.z - TOWN.z);
+    if (away.lengthSq() < 1e-6) away.set(0, 0, -1);
+    away.normalize();
+    m.pos.set(TOWN.x + away.x * keepOut, 0, TOWN.z + away.z * keepOut);
+    if (m.state === 'attack') { m.state = 'idle'; m.stateT = 0; m.atk = null; }
+  }
 
   if (zone === 'overworld') {
     m.pos.x = THREE.MathUtils.clamp(m.pos.x, -90, 90);
@@ -1029,7 +1041,7 @@ function updatePlayer(dt) {
   }
 
   if (zone === 'dungeon') {
-    clampToRooms(player.pos);
+    collideMaze(player.pos, 0.45);
   } else {
     const lim = 90;
     player.pos.x = THREE.MathUtils.clamp(player.pos.x, -lim, lim);
@@ -1104,7 +1116,23 @@ function updateCamera(dt) {
     player.pos.x - dir.x * back + side.x * CAM.shoulder,
     pivotY + Math.sin(elev) * CAM.dist,
     player.pos.z - dir.z * back + side.z * CAM.shoulder);
-  if (zone !== 'dungeon') want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
+  if (zone !== 'dungeon') {
+    want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
+  } else {
+    // corridors are narrow: pull the camera in until it clears the stone, and
+    // as it gets close, lift it so it still looks over her rather than through her
+    const px = player.pos.x, pz = player.pos.z;
+    let t = 1;
+    for (let i = 12; i >= 1; i--) {
+      const f = i / 12;
+      if (!mazeBlocked(px + (want.x - px) * f, pz + (want.z - pz) * f, 0.55)) { t = f; break; }
+      t = (i - 1) / 12;
+    }
+    t = Math.max(0.12, t);
+    want.x = px + (want.x - px) * t;
+    want.z = pz + (want.z - pz) * t;
+    want.y += (1 - t) * 2.4;
+  }
 
   if (camSnap) camera.position.copy(want); else camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
   camTarget.lerp(new THREE.Vector3(
@@ -1150,7 +1178,10 @@ function frame() {
     updateNpcs(dt);
     updateAbilities(dt);
   }
-  if (zone === 'dungeon') dungeon.update(dt, gameTime);
+  if (zone === 'dungeon') {
+    dungeon.update(dt, gameTime);
+    lantern.position.set(player.pos.x, groundY(player.pos.x, player.pos.z) + 1.7, player.pos.z);
+  }
   else { world.update(dt); world.followSun(player.pos); }
   if (!window.__djFreeCam) updateCamera(dt);
 
@@ -1194,11 +1225,7 @@ function pause() {
 }
 function talk() {
   if (ui.shopOpen) { ui.closeShop(); return; }
-  if (!state.running) return;
-  if (!nearNpc) {
-    if (nearDoor) setZone(nearDoor.to);
-    return;
-  }
+  if (!state.running || !nearNpc) return;
   document.exitPointerLock?.();
   if (nearNpc.kind === 'healer') ui.openHealer(game);
   else {
@@ -1265,12 +1292,16 @@ window.__dj = {
   get monster() { return nearestMonster() || monsters[0]; },
   get zone() { return zone; },
   setZone,
-  mausoleum, dungeon,
+  mausoleum, dungeon, mazeBlocked,
   attack() { wantAttack = true; },
   useAbility,
   abilities: ABILITIES,
   forceAttack(kind) { const m = nearestMonster() || monsters[0]; if (m) { m.cooldown = 0; startAttack(m, kind); } },
-  dropAt(x, z) { dropLoot(makeItem('armor', state.level), new THREE.Vector3(x, 0, z)); },
+  dropAt(x, z) {
+    const item = makeItem('armor', state.level);
+    dropLoot(item, new THREE.Vector3(x, 0, z));
+    return item.id;
+  },
   get attacks() { return ATTACKS; },
   give(n = 3) {
     for (let i = 0; i < n; i++) state.bag.push(makeItem(['weapon', 'armor', 'trinket'][i % 3], state.level));

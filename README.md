@@ -35,6 +35,8 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | `Shift` | run |
 | `I` | open the bag |
 | `E` | talk to the townsfolk |
+
+Doorways need no key — walk into the mausoleum to go down, onto the stairs to come back up.
 | `1`–`8` | use an ability |
 | `Esc` | pause |
 
@@ -43,8 +45,8 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 * The meadow is peaceful. The boars grazing there will not touch you — hit one
   and it turns on you until it loses interest, so every fight up top is one you
   picked.
-* Real monsters live under the mausoleum out west. Stand at its doorway, press
-  `E`, and you are in the crypt.
+* Real monsters live under the mausoleum out west. Walk in through its doorway
+  and you are in the crypt; walk back onto the stairs to come up again.
 * Killing anything gives xp and gold, and usually drops one item.
 * Walk over an item to pick it up. If it beats what you wear, you put it on
   automatically — no menu digging.
@@ -55,7 +57,12 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 
 ### The crypt
 
-Three kinds of thing live down there, and each wants to be fought differently:
+A maze of corridors, generated once from a fixed seed so it is the same crypt
+every run and worth learning. Every cell is reachable, there are loops rather
+than one forced path, and two of the cells open into chambers with a tomb and a
+pillar. The hero carries a lantern down there, and braziers mark the junctions.
+
+Three kinds of thing live in it, and each wants to be fought differently:
 
 * **Skovtrold** — the brute you started the game with. A quick jab that tracks
   you, and a heavy slam it commits to, which you can side-step.

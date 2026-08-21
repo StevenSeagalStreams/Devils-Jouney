@@ -185,13 +185,14 @@ const hilly = await page.evaluate(() => {
     }
   }
   if (!spot) return { skipped: true };
-  d.dropAt(spot.x, spot.z);
+  const id = d.dropAt(spot.x, spot.z);
   d.player.pos.set(spot.x, 0, spot.z);
-  return { terrain: +window.__djHeightAt(spot.x, spot.z).toFixed(2) };
+  return { terrain: +window.__djHeightAt(spot.x, spot.z).toFixed(2), id };
 });
 await gameWait(0.6);
-const left = await page.evaluate(() => window.__dj.drops.length);
-check('loot on high ground can be picked up', !hilly.skipped && left === 0,
+// other kills may leave their own loot lying about, so look for this one only
+const left = await page.evaluate(id => window.__dj.drops.some(d => d.item.id === id), hilly.id);
+check('loot on high ground can be picked up', !hilly.skipped && left === false,
   hilly.skipped ? 'no slope found' : `terrain y=${hilly.terrain}`);
 
 /* --------------------------------- town --------------------------------- */
@@ -199,21 +200,24 @@ const townState = await page.evaluate(() => {
   const d = window.__dj;
   d.player.pos.set(d.town.x, 0, d.town.z);
   d.state.hp = 100;
-  const m = d.monsters[0];
+  const m = d.monsters.find(x => !x.dead);          // the ability check may have killed one
+  m.hp = m.maxHp;
   m.pos.set(d.town.x, 0, d.town.z + 1.5);
   m.angry = 30;
   d.forceAttack(Object.keys(m.kind.attacks)[0]);
-  return { titleGone: !document.querySelector('.title-plate') };
+  return { titleGone: !document.querySelector('.title-plate'), id: m.id };
 });
 await gameWait(2.0);
-const safe = await page.evaluate(() => {
+const safe = await page.evaluate(id => {
   const d = window.__dj;
-  const m = d.monsters[0];
-  return { hp: d.state.hp, dist: +Math.hypot(m.pos.x - d.town.x, m.pos.z - d.town.z).toFixed(1), radius: d.town.radius };
-});
+  const m = d.monsters.find(x => x.id === id) || d.monsters[0];
+  return { hp: d.state.hp, dist: +Math.hypot(m.pos.x - d.town.x, m.pos.z - d.town.z).toFixed(1),
+    radius: d.town.radius, dead: m.dead };
+}, townState.id);
 check('the game title is gone from the HUD', townState.titleGone);
 check('the town is a safe zone', safe.hp >= 100, `hp ${Math.round(safe.hp)}`);
-check('creatures are pushed out of the town', safe.dist > safe.radius, `${safe.dist}m vs fence ${safe.radius}m`);
+check('creatures are pushed out of the town', safe.dist > safe.radius,
+  `${safe.dist}m vs fence ${safe.radius}m${safe.dead ? ' (it died)' : ''}`);
 
 const heal = await page.evaluate(() => {
   const d = window.__dj;
@@ -241,22 +245,65 @@ check('you can sell to the merchant', !trade.stillOwns && trade.gold === 500 - t
   `got ${trade.back} back`);
 
 /* ------------------------------ the crypt ------------------------------ */
-const door = await page.evaluate(() => {
+// walk in — no key press
+await page.evaluate(() => {
   const d = window.__dj;
-  d.player.pos.set(d.mausoleum.door.x, 0, d.mausoleum.door.z);
-  return true;
+  d.player.pos.set(d.mausoleum.door.x, 0, d.mausoleum.door.z - 9);
+  d.player.yaw = 0;
+  window.__djLook(0, -0.12);
 });
-await gameWait(0.4);
-const prompt = await page.evaluate(() => document.getElementById('prompt').textContent.trim());
-check('the mausoleum offers a way down', /gravkammeret/i.test(prompt), prompt || '(no prompt)');
-
-await page.keyboard.press('e');
-await gameWait(0.6);
+await gameWait(0.5);
+const beforeDoor = await page.evaluate(() => window.__dj.zone);
+await page.keyboard.down('w');
+for (let i = 0; i < 12 && (await page.evaluate(() => window.__dj.zone)) === 'overworld'; i++) await gameWait(0.5);
+await page.keyboard.up('w');
 const inside = await page.evaluate(() => {
   const d = window.__dj;
   return { zone: d.zone, kinds: [...new Set(d.monsters.map(m => m.kindId))].sort() };
 });
-check('pressing E goes underground', inside.zone === 'dungeon');
+check('walking into the mausoleum takes you down',
+  beforeDoor === 'overworld' && inside.zone === 'dungeon', `${beforeDoor} -> ${inside.zone}`);
+
+// the crypt must be a maze, not one open room
+const maze = await page.evaluate(() => {
+  const d = window.__dj;
+  const cells = d.dungeon.cells;
+  const h = cells.length, w = cells[0].length;
+  // every cell reachable from the entrance
+  const seen = new Set([`0,${h - 1}`]);
+  const stack = [[0, h - 1]];
+  const step = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] };
+  while (stack.length) {
+    const [x, z] = stack.pop();
+    for (const dir of ['n', 'e', 's', 'w']) {
+      if (cells[z][x][dir]) continue;
+      const nx = x + step[dir][0], nz = z + step[dir][1];
+      if (nx < 0 || nz < 0 || nx >= w || nz >= h) continue;
+      const key = `${nx},${nz}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      stack.push([nx, nz]);
+    }
+  }
+  let walls = 0;
+  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++)
+    walls += ['n', 'e', 's', 'w'].filter(dir => cells[z][x][dir]).length;
+
+  // and you cannot simply walk straight from the stairs to the far side
+  const from = d.dungeon.spawnSpot;
+  const far = d.dungeon.posts[d.dungeon.posts.length - 2].pos;
+  let blockedAt = null;
+  for (let i = 1; i <= 60; i++) {
+    const f = i / 60;
+    const x = from.x + (far.x - from.x) * f, z = from.z + (far.z - from.z) * f;
+    if (d.mazeBlocked(x, z, 0.4)) { blockedAt = +f.toFixed(2); break; }
+  }
+  return { cells: w * h, reached: seen.size, walls, blockedAt };
+});
+check('every part of the maze is reachable', maze.reached === maze.cells,
+  `${maze.reached}/${maze.cells} cells`);
+check('the crypt is a maze, not one room', maze.walls > maze.cells && maze.blockedAt !== null,
+  `${maze.walls} wall sides, straight line blocked at ${maze.blockedAt === null ? 'never' : maze.blockedAt}`);
 check('the crypt holds three kinds of monster',
   ['archer', 'brute', 'guard'].every(k => inside.kinds.includes(k)), inside.kinds.join(', '));
 
@@ -294,12 +341,19 @@ const block = await page.evaluate(() => {
 check('the guard blocks what it faces', block.back > block.front * 2,
   `front ${block.front} vs back ${block.back}`);
 
-// and back up again
-await page.evaluate(() => { const d = window.__dj; d.player.pos.copy(d.dungeon.exitSpot); });
-await gameWait(0.4);
-await page.keyboard.press('e');
-await gameWait(0.5);
-check('the stairs lead back to the meadow',
+// and back up again, also by walking
+await page.evaluate(() => {
+  const d = window.__dj;
+  const e = d.dungeon.exitSpot;
+  d.player.pos.set(e.x, 0, e.z - 7);
+  d.player.yaw = 0;
+  window.__djLook(0, -0.1);
+});
+await gameWait(0.6);
+await page.keyboard.down('w');
+for (let i = 0; i < 14 && (await page.evaluate(() => window.__dj.zone)) === 'dungeon'; i++) await gameWait(0.4);
+await page.keyboard.up('w');
+check('walking onto the stairs brings you back up',
   (await page.evaluate(() => window.__dj.zone)) === 'overworld');
 
 await page.screenshot({ path: 'shots/test-final.png' });
