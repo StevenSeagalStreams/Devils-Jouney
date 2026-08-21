@@ -22,7 +22,7 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | | |
 |---|---|
 | `W` `A` `S` `D` | walk |
-| mouse | look around (click once to lock the cursor; right-drag also works) |
+| mouse | swing the camera around her (click once to lock the cursor; right-drag also works) |
 | left click | swing your sword |
 | `Shift` | run |
 | `I` | open the bag |
@@ -38,6 +38,10 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 * Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`), and
   rarity is just a colour: grey → green → blue → purple → orange.
 * Fill the purple bar and you level up: more life, more damage, full heal.
+
+The camera is a fixed third-person rig: it orbits a pivot above the hero at a
+constant distance, so the mouse swings it around her and never leaves her out
+of frame.
 
 ## Layout
 

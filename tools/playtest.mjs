@@ -35,6 +35,47 @@ const after = await page.evaluate(() => ({ ...window.__dj.player.pos }));
 const moved = Math.hypot(after.x - before.x, after.z - before.z);
 check('WASD moves the hero', moved > 1.5, `moved ${moved.toFixed(2)}m`);
 
+// --- strafing must follow the camera, not mirror it
+async function strafe(key) {
+  const start = await page.evaluate(() => ({ ...window.__dj.player.pos }));
+  await page.keyboard.down(key);
+  await gameWait(0.8);
+  await page.keyboard.up(key);
+  await gameWait(0.2);
+  return await page.evaluate(s => {
+    const d = window.__dj;
+    // camera local X is screen-right
+    const m = d.camera.matrixWorld.elements;
+    const dx = d.player.pos.x - s.x, dz = d.player.pos.z - s.z;
+    return +(dx * m[0] + dz * m[2]).toFixed(2);
+  }, start);
+}
+const dRight = await strafe('d');
+const aLeft = await strafe('a');
+check('D strafes right on screen', dRight > 0.5, `${dRight}m along camera-right`);
+check('A strafes left on screen', aLeft < -0.5, `${aLeft}m along camera-right`);
+
+// --- the camera stays a third-person rig at every pitch
+const rig = await page.evaluate(async () => {
+  const THREE = await import('/vendor/three.module.js');
+  const d = window.__dj;
+  const out = [];
+  for (const pitch of [-0.55, -0.3, -0.1, 0.25]) {
+    d.camera.position.set(0, 0, 0);          // force the follow lerp to resettle
+    for (let i = 0; i < 200; i++) window.__djCam && window.__djCam(0.1, pitch);
+    const head = new THREE.Vector3(d.player.pos.x, d.player.pos.y + 1.5, d.player.pos.z);
+    const dist = d.camera.position.distanceTo(head);
+    const s = d.screenOf(head);
+    out.push({ pitch, dist: +dist.toFixed(2), onScreen: s.visible,
+      sx: +(s.x / window.innerWidth).toFixed(2), sy: +(s.y / window.innerHeight).toFixed(2) });
+  }
+  return out;
+});
+const framed = rig.every(r => r.dist > 2.5 && r.dist < 7 && r.onScreen
+  && r.sx > 0.05 && r.sx < 0.95 && r.sy > 0.05 && r.sy < 0.95);
+check('camera stays locked in third person', framed,
+  rig.map(r => `p${r.pitch}: ${r.dist}m at ${r.sx}/${r.sy}`).join(', '));
+
 // --- combat until the monster dies
 const start = await page.evaluate(() => ({ xp: window.__dj.state.xp, level: window.__dj.state.level, hp: window.__dj.monster.hp }));
 let swings = 0;

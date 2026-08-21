@@ -139,7 +139,7 @@ function dropLoot(item, pos) {
 const keys = new Set();
 
 let wantAttack = false;
-const look = { yaw: Math.PI, pitch: -0.18 };
+const look = { yaw: Math.PI, pitch: -0.10 };
 
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -164,7 +164,7 @@ canvas.addEventListener('mousedown', e => {
 addEventListener('mousemove', e => {
   if (document.pointerLockElement !== canvas) return;
   look.yaw -= e.movementX * 0.0025;
-  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.002, -0.75, 0.45);
+  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.002, -0.55, 0.25);
 });
 // Only pause when a lock we actually held goes away — some browsers (and
 // headless runs) simply deny the request, and that must not stop the game.
@@ -184,7 +184,7 @@ addEventListener('mouseup', e => { if (e.button === 2) dragging = false; });
 addEventListener('mousemove', e => {
   if (!dragging || document.pointerLockElement === canvas) return;
   look.yaw -= e.movementX * 0.004;
-  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.003, -0.75, 0.45);
+  look.pitch = THREE.MathUtils.clamp(look.pitch - e.movementY * 0.003, -0.55, 0.25);
 });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
@@ -468,7 +468,7 @@ function animateMonster(m, dt) {
 function updatePlayer(dt) {
   const t = totals();
   const forward = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw));
-  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
   const move = new THREE.Vector3();
   if (keys.has('w')) move.add(forward);
   if (keys.has('s')) move.sub(forward);
@@ -556,22 +556,27 @@ function animatePlayer(dt, moving, sprinting) {
 
 /* --------------------------- camera --------------------------- */
 const camTarget = new THREE.Vector3();
+const CAM = { dist: 4.6, pivot: 1.55, shoulder: 0.95, aim: 1.85 };
+
 function updateCamera(dt) {
-  const height = 2.0 + look.pitch * 2.0;
-  const dist = 4.6;
-  const back = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw)).multiplyScalar(-dist);
-  const side = new THREE.Vector3(back.z, 0, -back.x).normalize().multiplyScalar(0.95);
+  const elev = -look.pitch;                    // mouse down -> camera swings up
+  const dir = new THREE.Vector3(Math.sin(look.yaw), 0, Math.cos(look.yaw));
+  const side = new THREE.Vector3(-dir.z, 0, dir.x);
   const ground = heightAt(player.pos.x, player.pos.z);
+  const pivotY = ground + CAM.pivot;
+
+  const back = Math.cos(elev) * CAM.dist;
   const want = new THREE.Vector3(
-    player.pos.x + back.x + side.x,
-    ground + height,
-    player.pos.z + back.z + side.z);
+    player.pos.x - dir.x * back + side.x * CAM.shoulder,
+    pivotY + Math.sin(elev) * CAM.dist,
+    player.pos.z - dir.z * back + side.z * CAM.shoulder);
   want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
+
   camera.position.lerp(want, 1 - Math.pow(0.0015, dt));
   camTarget.lerp(new THREE.Vector3(
-    player.pos.x + side.x * 1.85,
-    ground + 1.55 + look.pitch * 2.6,
-    player.pos.z + side.z * 1.85), 1 - Math.pow(0.0015, dt));
+    player.pos.x + side.x * CAM.aim,
+    pivotY,
+    player.pos.z + side.z * CAM.aim), 1 - Math.pow(0.0015, dt));
   camera.lookAt(camTarget);
 }
 
@@ -683,6 +688,7 @@ updateCamera(1);
 frame();
 
 window.__djPose = () => animatePlayer(0.016, false, false);
+window.__djCam = (dt, pitch) => { if (pitch !== undefined) look.pitch = pitch; updateCamera(dt); };
 
 // expose a little of the state for automated look-tests
 window.__dj = {
