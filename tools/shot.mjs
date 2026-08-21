@@ -12,7 +12,9 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
          '--ignore-gpu-blocklist', '--enable-webgl', '--hide-scrollbars'],
 });
-const page = await browser.newPage({ viewport: { width: 1536, height: 1024 }, deviceScaleFactor: 1 });
+const W = Number(process.env.SHOT_W || 1536);
+const H = Number(process.env.SHOT_H || 1024);
+const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
 const errors = [];
 page.on('pageerror', e => errors.push('PAGEERROR ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('CONSOLE ' + m.text()); });
@@ -43,12 +45,9 @@ if (scenario === 'combat') {
   await page.waitForTimeout(220);
 }
 if (scenario === 'inventory') {
-  await page.evaluate(() => {
-    const d = window.__dj;
-    for (let i = 0; i < 5; i++) d.state.bag.push(window.__djMake ? window.__djMake() : null);
-  });
+  await page.evaluate(() => window.__dj.give(6));
   await page.keyboard.press('i');
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
 }
 if (scenario.startsWith('closeup')) {
   const ang = Number(scenario.split(':')[1] ?? 180);
@@ -60,6 +59,24 @@ if (scenario.startsWith('closeup')) {
     d.camera.lookAt(d.player.pos.x, 1.0, d.player.pos.z);
   }, ang);
   await page.waitForTimeout(300);
+}
+if (scenario.startsWith('walkclose')) {
+  // hold W, then freeze the camera beside the hero to catch a mid-stride frame
+  const ang = Number(scenario.split(':')[1] ?? 90);
+  await page.keyboard.down('w');
+  await page.waitForTimeout(1500);
+  await page.evaluate(a => {
+    window.__djFreeCam = true;
+    const d = window.__dj;
+    const r = 3.6, rad = a * Math.PI / 180;
+    d.camera.position.set(d.player.pos.x + Math.sin(rad) * r, 1.5, d.player.pos.z + Math.cos(rad) * r);
+    d.camera.lookAt(d.player.pos.x, 0.95, d.player.pos.z);
+  }, ang);
+  await page.waitForTimeout(90);
+  await page.screenshot({ path: out });
+  await page.keyboard.up('w');
+  await browser.close();
+  process.exit(0);
 }
 if (scenario === 'walk') {
   await page.keyboard.down('w');
