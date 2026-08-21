@@ -21,11 +21,11 @@ export const WORLD_SIZE = 260;
 /** Ground height at any point. Flat-ish arena in the middle, swells further out. */
 export function heightAt(x, z) {
   const big = (valueNoise(x * 0.012, z * 0.012) - 0.5) * 9.0;
-  const mid = (valueNoise(x * 0.045, z * 0.045) - 0.5) * 2.2;
+  const mid = (valueNoise(x * 0.045, z * 0.045) - 0.5) * 2.4;
   const fine = (valueNoise(x * 0.16, z * 0.16) - 0.5) * 0.35;
   // flatten the play area around the origin so combat never feels bumpy
   const d = Math.hypot(x, z);
-  const flat = THREE.MathUtils.clamp((d - 14) / 26, 0, 1);
+  const flat = THREE.MathUtils.clamp((d - 10) / 24, 0, 1);
   return (big + mid) * flat + fine;
 }
 
@@ -43,7 +43,7 @@ function skyDome() {
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
     uniforms: {
-      top: { value: new THREE.Color('#3f8fd6') },
+      top: { value: new THREE.Color('#6aa9e2') },
       mid: { value: new THREE.Color('#8dc5ef') },
       bot: { value: new THREE.Color('#dceefb') },
     },
@@ -53,7 +53,7 @@ function skyDome() {
       void main(){
         float h = normalize(vPos).y;
         vec3 c = mix(bot, mid, smoothstep(-0.05, 0.28, h));
-        c = mix(c, top, smoothstep(0.25, 0.85, h));
+        c = mix(c, top, smoothstep(0.05, 1.0, h));
         gl_FragColor = vec4(c, 1.0);
       }`,
   });
@@ -84,12 +84,13 @@ function makeClouds(rng) {
   const group = new THREE.Group();
   const tex = cloudTexture();
   const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.9, depthWrite: false, fog: false });
-  for (let i = 0; i < 22; i++) {
+  const count = 40;
+  for (let i = 0; i < count; i++) {
     const s = new THREE.Sprite(mat.clone());
-    const a = rng() * Math.PI * 2;
-    const r = 180 + rng() * 260;
-    const scale = 60 + rng() * 90;
-    s.position.set(Math.cos(a) * r, 70 + rng() * 70, Math.sin(a) * r);
+    const a = (i / count) * Math.PI * 2 + (rng() - 0.5) * 0.35;
+    const r = 150 + rng() * 150;
+    const scale = 42 + rng() * 58;
+    s.position.set(Math.cos(a) * r, 52 + rng() * 38, Math.sin(a) * r);
     s.scale.set(scale, scale * 0.55, 1);
     s.material.opacity = 0.65 + rng() * 0.3;
     s.userData.drift = 0.35 + rng() * 0.5;
@@ -110,15 +111,15 @@ function grassTexture() {
   const g = c.getContext('2d');
   g.fillStyle = '#ffffff';
   g.fillRect(0, 0, 256, 256);
-  for (let i = 0; i < 2600; i++) {
+  for (let i = 0; i < 700; i++) {
     const x = Math.random() * 256, y = Math.random() * 256;
-    const r = 1 + Math.random() * 4;
-    g.fillStyle = Math.random() > 0.5 ? 'rgba(226,240,214,0.28)' : 'rgba(168,196,128,0.22)';
+    const r = 4 + Math.random() * 14;
+    g.fillStyle = Math.random() > 0.5 ? 'rgba(232,244,220,0.09)' : 'rgba(172,198,132,0.06)';
     g.beginPath(); g.ellipse(x, y, r, r * 0.6, Math.random() * 3, 0, Math.PI * 2); g.fill();
   }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(190, 190);
+  t.repeat.set(40, 40);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 8;
   return t;
@@ -177,7 +178,7 @@ function makeTree(rng) {
 }
 
 function makeRock(rng) {
-  const r = 0.22 + rng() * 0.45;
+  const r = 0.16 + rng() * 0.22;
   const m = new THREE.Mesh(
     new THREE.DodecahedronGeometry(r, 0),
     new THREE.MeshLambertMaterial({ color: new THREE.Color('#a5a298').offsetHSL(0, 0, (rng() - 0.5) * 0.08), flatShading: true })
@@ -189,59 +190,17 @@ function makeRock(rng) {
   return m;
 }
 
-/** Cheap grass tufts: instanced two-quad crosses, only near the arena. */
-function makeGrassTufts(rng) {
-  const blade = new THREE.PlaneGeometry(0.34, 0.26);
-  blade.translate(0, 0.13, 0);
-  const cross = new THREE.PlaneGeometry(0.34, 0.26);
-  cross.translate(0, 0.13, 0);
-  cross.rotateY(Math.PI / 2);
-  const geos = [blade, cross];
-  const merged = new THREE.BufferGeometry();
-  // simple manual merge of two planes
-  const posArr = [], normArr = [], uvArr = [], idxArr = [];
-  let offset = 0;
-  for (const g of geos) {
-    posArr.push(...g.attributes.position.array);
-    normArr.push(...g.attributes.normal.array);
-    uvArr.push(...g.attributes.uv.array);
-    for (const i of g.index.array) idxArr.push(i + offset);
-    offset += g.attributes.position.count;
-  }
-  merged.setAttribute('position', new THREE.Float32BufferAttribute(posArr, 3));
-  merged.setAttribute('normal', new THREE.Float32BufferAttribute(normArr, 3));
-  merged.setAttribute('uv', new THREE.Float32BufferAttribute(uvArr, 2));
-  merged.setIndex(idxArr);
-
-  const count = 520;
-  const mat = new THREE.MeshLambertMaterial({ color: '#8fc95c', side: THREE.DoubleSide });
-  const inst = new THREE.InstancedMesh(merged, mat, count);
-  const dummy = new THREE.Object3D();
-  for (let i = 0; i < count; i++) {
-    const a = rng() * Math.PI * 2, r = 5 + rng() * 40;
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    dummy.position.set(x, heightAt(x, z) - 0.02, z);
-    dummy.rotation.y = rng() * Math.PI;
-    const s = 0.55 + rng() * 0.45;
-    dummy.scale.set(s, s * (0.7 + rng() * 0.5), s);
-    dummy.updateMatrix();
-    inst.setMatrixAt(i, dummy.matrix);
-  }
-  inst.instanceMatrix.needsUpdate = true;
-  return inst;
-}
-
 function makeDistantHills(rng) {
   const g = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: '#9dbcd6', fog: false });
   for (let i = 0; i < 26; i++) {
     const a = (i / 26) * Math.PI * 2 + rng() * 0.1;
-    const r = 380 + rng() * 90;
-    const w = 90 + rng() * 130;
-    const h = 26 + rng() * 40;
+    const r = 430 + rng() * 80;
+    const w = 110 + rng() * 150;
+    const h = 30 + rng() * 26;
     const m = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), mat.clone());
     m.material.color = new THREE.Color('#a7c6de').offsetHSL(0, (rng() - 0.5) * 0.05, (rng() - 0.5) * 0.06);
-    m.position.set(Math.cos(a) * r, -6, Math.sin(a) * r);
+    m.position.set(Math.cos(a) * r, -9, Math.sin(a) * r);
     m.scale.set(w, h, w * 0.7);
     g.add(m);
   }
@@ -284,7 +243,7 @@ export function createWorld(scene) {
   const treeSpots = [];
   for (let i = 0; i < 95; i++) {
     const a = rng() * Math.PI * 2;
-    const r = 30 + rng() * 145;
+    const r = 16 + rng() * 160;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     const t = makeTree(rng);
     t.position.set(x, heightAt(x, z), z);
