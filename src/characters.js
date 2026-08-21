@@ -111,14 +111,14 @@ export function createPlayerModel() {
   const eyeMat = new THREE.MeshBasicMaterial({ color: '#2b1c12' });
   for (const sgn of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.021, 7, 7), eyeMat);
-    eye.position.set(0.052 * sgn, 0.132, 0.158);
+    eye.position.set(0.052 * sgn, 0.132, 0.148);
     neck.add(eye);
   }
   const brow = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.018, 0.02), new THREE.MeshBasicMaterial({ color: '#5d3a20' }));
-  brow.position.set(0, 0.168, 0.156);
+  brow.position.set(0, 0.168, 0.148);
   neck.add(brow);
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.02), new THREE.MeshBasicMaterial({ color: '#8d5340' }));
-  mouth.position.set(0, 0.073, 0.158);
+  mouth.position.set(0, 0.073, 0.145);
   neck.add(mouth);
 
   const crown = sphere(0.176, hairM, 12);
@@ -179,7 +179,7 @@ export function createPlayerModel() {
     const boot = box(0.17, 0.14, 0.28, leatherDark);
     boot.position.set(0, -0.272, 0.04);
     knee.add(boot);
-    return { hip, knee };
+    return { hip, knee, boot, bootHalf: 0.07 };
   }
   const legR = leg(-1);
   const legL = leg(1);
@@ -310,7 +310,7 @@ export function createMonsterModel(variant = 0) {
     const foot = box(0.2, 0.12, 0.3, dark);
     foot.position.set(0, -0.3, 0.05);
     knee.add(foot);
-    return { hip, knee };
+    return { hip, knee, foot, footHalf: 0.06 };
   }
   const legR = leg(-1), legL = leg(1);
 

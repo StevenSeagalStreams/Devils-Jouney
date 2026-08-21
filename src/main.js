@@ -235,6 +235,22 @@ function syncHotbar() {
 
 /* --------------------------- combat helpers --------------------------- */
 const tmpV = new THREE.Vector3();
+const tmpFoot = new THREE.Vector3();
+
+/** Rigid legs shorten as they swing, so pin the lowest foot to the terrain and
+ *  let the pelvis height fall out of that — no hand-tuned bob to get wrong. */
+function plantFeet(obj, pelvis, base, feet) {
+  pelvis.position.y = base;
+  obj.updateMatrixWorld(true);
+  const scale = obj.scale.y || 1;
+  let lowest = Infinity;
+  for (const { mesh, half } of feet) {
+    mesh.getWorldPosition(tmpFoot);
+    lowest = Math.min(lowest, tmpFoot.y - half * scale);
+  }
+  if (!Number.isFinite(lowest)) return;
+  pelvis.position.y = base + (obj.position.y - lowest) / scale;
+}
 function screenOf(v3, yOffset = 0) {
   tmpV.copy(v3);
   tmpV.y += yOffset;
@@ -406,12 +422,15 @@ function updateMonster(dt) {
 
 function animateMonster(m, dt) {
   const u = m.obj.userData;
-  const swing = Math.sin(m.walkPhase) * 0.55;
+  const swing = Math.sin(m.walkPhase) * (m.state === 'chase' ? 0.55 : 0.2);
   u.legR.hip.rotation.x = swing;
   u.legL.hip.rotation.x = -swing;
   u.legR.knee.rotation.x = Math.max(0, -swing) * 0.6;
   u.legL.knee.rotation.x = Math.max(0, swing) * 0.6;
-  u.body.position.y = 0.98 + Math.abs(Math.sin(m.walkPhase)) * 0.05;
+  plantFeet(m.obj, u.body, 0.98, [
+    { mesh: u.legR.foot, half: u.legR.footHalf },
+    { mesh: u.legL.foot, half: u.legL.footHalf },
+  ]);
   u.headPivot.rotation.x = -0.22 + Math.sin(m.walkPhase * 0.5) * 0.05;
 
   if (m.state === 'attack' && m.attackT >= 0) {
@@ -486,9 +505,13 @@ function animatePlayer(dt, moving, sprinting) {
   u.legL.hip.rotation.x = -swing;
   u.legR.knee.rotation.x = Math.max(0, -swing) * 0.9;
   u.legL.knee.rotation.x = Math.max(0, swing) * 0.9;
-  u.hips.position.y = 0.92 + (moving ? Math.abs(Math.sin(player.walkPhase)) * 0.05 : Math.sin(player.walkPhase * 0.8) * 0.012);
+  const breathe = moving ? 0 : Math.sin(player.walkPhase * 0.8) * 0.012;
   u.torso.rotation.y = -swing * 0.12;
   u.neck.rotation.y = swing * 0.06;
+  plantFeet(player.obj, u.hips, 0.92 + breathe, [
+    { mesh: u.legR.boot, half: u.legR.bootHalf },
+    { mesh: u.legL.boot, half: u.legL.bootHalf },
+  ]);
 
   // left arm swings with the walk
   u.armL.shoulder.rotation.x = THREE.MathUtils.lerp(u.armL.shoulder.rotation.x, swing * 0.9, dt * 14);
@@ -500,10 +523,13 @@ function animatePlayer(dt, moving, sprinting) {
     // wind up over the shoulder, then a fast diagonal slash
     const wind = Math.sin(Math.min(p / 0.34, 1) * Math.PI * 0.5);
     const slash = p > 0.34 ? Math.min(1, (p - 0.34) / 0.3) : 0;
-    u.armR.shoulder.rotation.x = -2.1 * wind + slash * 3.0;
-    u.armR.shoulder.rotation.z = -0.5 * wind + slash * 0.7;
-    u.armR.elbow.rotation.x = -0.9 * wind + slash * 0.8;
-    u.torso.rotation.y = -0.35 * wind + slash * 0.7;
+    const rec = p > 0.64 ? Math.min(1, (p - 0.64) / 0.36) : 0;
+    const k = rec * rec * (3 - 2 * rec);
+    const L = THREE.MathUtils.lerp;
+    u.armR.shoulder.rotation.x = L(-2.1 * wind + slash * 2.6, 0.22, k);
+    u.armR.shoulder.rotation.z = L(-0.5 * wind + slash * 0.7, -0.26, k);
+    u.armR.elbow.rotation.x = L(-0.9 * wind + slash * 0.8, -0.25, k);
+    u.torso.rotation.y = L(-0.35 * wind + slash * 0.7, 0, k);
   } else {
     // relaxed guard: sword held low and slightly out, like the concept art
     u.armR.shoulder.rotation.x = THREE.MathUtils.lerp(u.armR.shoulder.rotation.x, 0.22 - swing * 0.5, dt * 10);
