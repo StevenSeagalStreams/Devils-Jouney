@@ -197,6 +197,12 @@ renderer.setSize(innerWidth, innerHeight);
 const game = {
   state,
   totals,
+  /** Taking off +liv gear can leave hp above the new max until the next frame. */
+  clampVitals() {
+    const t = totals();
+    state.hp = Math.min(state.hp, t.maxHp);
+    state.stamina = Math.min(state.stamina, t.maxStamina);
+  },
   equip(item) {
     const prev = state.equipped[item.slot];
     const i = state.bag.indexOf(item);
@@ -204,6 +210,7 @@ const game = {
     state.equipped[item.slot] = item;
     if (prev) state.bag.unshift(prev);
     if (item.slot === 'weapon') player.obj.userData.setWeaponTier(item.tier);
+    this.clampVitals();
     syncHotbar();
     ui.renderAll();
     ui.toast(`Tog ${item.name} på`, 1200);
@@ -214,6 +221,7 @@ const game = {
     state.equipped[slot] = null;
     state.bag.unshift(item);
     if (slot === 'weapon') player.obj.userData.setWeaponTier(0);
+    this.clampVitals();
     syncHotbar();
     ui.renderAll();
   },
