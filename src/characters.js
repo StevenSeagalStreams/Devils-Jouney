@@ -87,16 +87,19 @@ export function createPlayerModel() {
   buckle.position.set(0, -0.15, 0.15);
   torso.add(buckle);
   // skirt / tassets
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.31, 0.38, 9, 1, true), leather);
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.38, 0.30, 9, 1, true), leather);
   skirt.material.side = THREE.DoubleSide;
-  skirt.position.y = -0.34;
+  skirt.position.y = -0.30;
   skirt.castShadow = true;
   torso.add(skirt);
 
   // head
   const neck = new THREE.Group();
-  neck.position.y = 0.68;
+  neck.position.y = 0.74;
   torso.add(neck);
+  const throat = caps(0.062, 0.07, 0.10, skinM, 8);
+  throat.position.y = -0.02;
+  neck.add(throat);
   const head = sphere(0.168, skinM, 12);
   head.scale.set(0.92, 1.05, 0.95);
   head.position.y = 0.12;
@@ -124,11 +127,11 @@ export function createPlayerModel() {
   neck.add(crown);
 
   const braid = new THREE.Group();
-  braid.position.set(0, 0.10, -0.15);
+  braid.position.set(0, 0.10, -0.11);
   neck.add(braid);
   for (let i = 0; i < 7; i++) {
     const s = sphere(0.06 - i * 0.0045, hairM, 8);
-    s.position.set(0, -i * 0.085, -i * 0.008);
+    s.position.set(0, -i * 0.085, 0);
     braid.add(s);
   }
 
@@ -248,7 +251,7 @@ export function createMonsterModel(variant = 0) {
   headPivot.add(jaw);
   for (const s of [-1, 1]) {
     const eye = sphere(0.032, new THREE.MeshBasicMaterial({ color: p.eye }), 7);
-    eye.position.set(0.075 * s, 0.0, 0.16);
+    eye.position.set(0.075 * s, 0.0, 0.145);
     headPivot.add(eye);
     const horn = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.13, 5), dark);
     horn.position.set(0.1 * s, 0.16, -0.04);
@@ -260,7 +263,7 @@ export function createMonsterModel(variant = 0) {
   // long arms hanging low; the segments meet cleanly at the elbow
   function limb(side) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(0.31 * side, 0.28, 0);
+    shoulder.position.set(0.38 * side, 0.28, 0);
     lean.add(shoulder);
     const upper = caps(0.12, 0.1, 0.44, skin, 7);
     upper.position.y = -0.22;
