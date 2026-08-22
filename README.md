@@ -9,6 +9,8 @@ no build step, no bundler, no install. Kill the monster, pick up better gear, le
 
 ![the crypt](docs/screenshot-crypt.png)
 
+![the boss](docs/screenshot-boss.png)
+
 ![the town](docs/screenshot-town.png)
 
 ![abilities](docs/screenshot-abilities.png)
@@ -62,6 +64,11 @@ every run and worth learning. Every cell is reachable, there are loops rather
 than one forced path, and two of the cells open into chambers with a tomb and a
 pillar. The hero carries a lantern down there, and braziers mark the junctions.
 
+Nothing sees, shoots, or shows you its health bar through a wall — step around
+a corner and an archer loses you. The crypt stays cleared once you kill things
+in it; it only repopulates when you leave and come back. Walk back onto the
+stairs you arrived on to get out.
+
 Three kinds of thing live in it, and each wants to be fought differently:
 
 * **Skovtrold** — the brute you started the game with. A quick jab that tracks
@@ -73,6 +80,17 @@ Three kinds of thing live in it, and each wants to be fought differently:
 
 Every wind-up draws a ring on the floor that grows out to that blow's reach and
 lands when the ring stops, so the fight is about reading and reacting.
+
+### The Gravherre
+
+Deep in the maze is a hall with a boss in it. He has three moves, all painted on
+the floor before they land:
+
+* **Pisken** — his bread and butter: a lane of floor in front of him. It follows
+  him while he winds up, then commits, and that gap is when you step off it.
+* **Stormløbet** — he marks a long lane, then runs down it. Get out of the lane.
+* **Knuset** — the whole hall turns red except three blue rings. Stand in a blue
+  ring or take the full hit.
 
 ### Abilities
 

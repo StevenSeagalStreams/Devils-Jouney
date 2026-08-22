@@ -341,6 +341,200 @@ const block = await page.evaluate(() => {
 check('the guard blocks what it faces', block.back > block.front * 2,
   `front ${block.front} vs back ${block.back}`);
 
+
+// Measurements below are about one creature at a time: park the rest far away
+// so a passing brute cannot land a hit inside a reading.
+async function isolate(kindId) {
+  return page.evaluate(k => {
+    const d = window.__dj;
+    let kept = null;
+    for (const m of d.monsters) {
+      if (!kept && m.kindId === k && !m.dead) { kept = m; continue; }
+      m.pos.set(m.pos.x + 400, 0, m.pos.z + 400);
+      m.home.copy(m.pos);
+      m.state = 'idle';
+      m.stateT = 0;
+      m.atk = null;
+      m.cooldown = 999;
+    }
+    return !!kept;
+  }, kindId);
+}
+
+// nothing sees, shoots, or is shown through a wall
+await isolate('archer');
+await page.evaluate(() => {
+  const a = window.__dj.monsters.find(m => m.kindId === 'archer');
+  a.speed = 0; a.state = 'idle'; a.stateT = 0;
+});
+
+// find a spot that is still out of sight after the physics has settled the
+// hero — a teleport can be nudged out of a wall and open the sightline
+let hideSpot = null;
+const candidates = await page.evaluate(() => {
+  const d = window.__dj;
+  const a = d.monsters.find(m => m.kindId === 'archer');
+  const out = [];
+  for (let ang = 0; ang < 6.28; ang += 0.12) {
+    for (const r of [4, 5, 6, 7, 8]) {
+      const x = a.pos.x + Math.cos(ang) * r, z = a.pos.z + Math.sin(ang) * r;
+      if (d.mazeBlocked(x, z, 0.9)) continue;
+      if (d.hasLineOfSight(a.pos, { x, z })) continue;
+      out.push({ x, z, r });
+    }
+  }
+  return out.slice(0, 40);
+});
+for (const c of candidates) {
+  await page.evaluate(spot => { window.__dj.player.pos.set(spot.x, 0, spot.z); }, c);
+  await gameWait(0.15);
+  const stillHidden = await page.evaluate(() => {
+    const d = window.__dj;
+    const a = d.monsters.find(m => m.kindId === 'archer');
+    return !d.hasLineOfSight(a.pos, d.player.pos);
+  });
+  if (stillHidden) { hideSpot = c; break; }
+}
+check('there are spots the archer cannot see', !!hideSpot,
+  hideSpot ? `hidden at ${hideSpot.r.toFixed(0)}m` : `none of ${candidates.length} candidates held`);
+
+if (hideSpot) {
+  const before = await page.evaluate(() => {
+    const d = window.__dj;
+    const archer = d.monsters.find(m => m.kindId === 'archer');
+    d.state.level = 60;
+    d.state.hp = d.totals().maxHp;
+    d.hurtLog.length = 0;
+    archer.cooldown = 0;
+    d.startAttackOn(archer, 'skud');           // make it try, with stone in the way
+    return { fired: d.arrowsFired, sees: d.hasLineOfSight(archer.pos, d.player.pos) };
+  });
+  await gameWait(2.5);
+  const after = await page.evaluate(() => ({
+    fired: window.__dj.arrowsFired,
+    arrowHits: window.__dj.hurtLog.filter(h => h.source === 'arrow').length,
+  }));
+  check('nothing shoots you through a wall',
+    !before.sees && after.fired === before.fired && after.arrowHits === 0,
+    `${after.fired - before.fired} arrows loosed, ${after.arrowHits} hits`);
+
+  const bars = await page.evaluate(() => {
+    const d = window.__dj;
+    let seen = 0, hiddenCount = 0;
+    for (const m of d.monsters) {
+      if (m.dead) continue;
+      if (d.hasLineOfSight(d.player.pos, m.pos)) seen++; else hiddenCount++;
+    }
+    return { seen, hiddenCount, total: d.monsters.length };
+  });
+  check('health bars are limited to what you can see', bars.hiddenCount > 0,
+    `${bars.seen} visible, ${bars.hiddenCount} hidden of ${bars.total}`);
+  await page.evaluate(() => { window.__dj.state.level = 1; });
+}
+
+// the crypt stays cleared until you leave
+const cleared = await page.evaluate(() => {
+  const d = window.__dj;
+  const victim = d.monsters.find(m => !m.dead && m.kindId !== 'boss');
+  d.damageMonster(victim, 999999, false);
+  return { before: d.monsters.length, id: victim.id };
+});
+await gameWait(14.0);
+const stillCleared = await page.evaluate(id => {
+  const d = window.__dj;
+  return { count: d.monsters.length, back: d.monsters.some(m => m.id === id) };
+}, cleared.id);
+check('the crypt does not repopulate while you are in it',
+  stillCleared.count < cleared.before && !stillCleared.back,
+  `${cleared.before} -> ${stillCleared.count} creatures`);
+
+/* -------------------------------- the boss -------------------------------- */
+const boss = await page.evaluate(() => {
+  const d = window.__dj;
+  const b = d.monsters.find(m => m.kindId === 'boss');
+  if (!b) return null;
+  return { name: b.name, hp: b.maxHp, attacks: Object.keys(b.kind.attacks), barY: b.kind.barY };
+});
+check('a boss waits in the crypt', !!boss && boss.attacks.length === 3,
+  boss ? `${boss.name}, ${boss.hp} hp, ${boss.attacks.join('/')}` : 'missing');
+
+// whip: a line on the ground that only hits what stands in it
+await isolate('boss');
+async function bossHit(attack, place) {
+  await page.evaluate(([name, spot]) => {
+    const d = window.__dj;
+    const b = d.monsters.find(m => m.kindId === 'boss');
+    b.pos.copy(d.dungeon.bossCentre); b.yaw = 0; b.cooldown = 0; b.state = 'chase'; b.atk = null;
+    b.chargeT = 99;                          // no charge may land inside the reading
+    d.state.level = 60;                     // a deep health pool so nothing clamps
+    d.state.hp = d.totals().maxHp;
+    d.player.pos.set(b.pos.x + spot[0], 0, b.pos.z + spot[1]);
+    d.startBossAttack(b, name, Math.hypot(spot[0], spot[1]));
+  }, [attack, place]);
+  await gameWait(0.15);
+  const start = await page.evaluate(() => {
+    const d = window.__dj;
+    // step into a safe ring if this is the slam and we were told to
+    return { hp: d.state.hp, markers: d.groundFx.length };
+  });
+  return start;
+}
+
+async function whipLands(dodge) {
+  await page.evaluate(() => {
+    const d = window.__dj;
+    const b = d.monsters.find(m => m.kindId === 'boss');
+    b.pos.copy(d.dungeon.bossCentre); b.yaw = 0; b.cooldown = 0; b.state = 'chase'; b.atk = null;
+    b.chargeT = 99; b.slamT = 99;              // no follow-up may muddy the reading
+    d.state.level = 60;
+    d.state.hp = d.totals().maxHp;
+    d.hurtLog.length = 0;
+    d.player.pos.set(b.pos.x, 0, b.pos.z + 5); // square in the lane
+    d.startBossAttack(b, 'pisk', 5);
+  });
+  if (dodge) {
+    await gameWait(0.75);                      // wait for it to commit, then step aside
+    await page.evaluate(() => {
+      const d = window.__dj;
+      const b = d.monsters.find(m => m.kindId === 'boss');
+      d.player.pos.set(b.pos.x + 6, 0, b.pos.z + 5);
+    });
+  }
+  await gameWait(1.4);
+  return page.evaluate(() => ({
+    hits: window.__dj.hurtLog.filter(h => h.source === 'boss:whip').length,
+    markers: window.__dj.groundFx.length,
+  }));
+}
+const whipIn = await whipLands(false);
+const whipOut = await whipLands(true);
+check('the whip lands on its line, and stepping off it dodges',
+  whipIn.hits === 1 && whipOut.hits === 0,
+  `standing in it ${whipIn.hits} hit, stepping aside ${whipOut.hits} hit`);
+
+// slam: three blue circles plus one red, and the blue ones save you
+const slamSafe = await bossHit('knus', [0, 4]);
+const steppedIn = await page.evaluate(() => {
+  const d = window.__dj;
+  const ring = d.groundFx.find(f => f.mesh.material.color.getHex() === 0x2f9bff);
+  if (ring) d.player.pos.set(ring.mesh.position.x, 0, ring.mesh.position.z);
+  return !!ring;
+});
+await gameWait(3.6);
+const survived = await page.evaluate(() => window.__dj.state.hp);
+
+const slamOpen = await bossHit('knus', [0, 4]);
+await gameWait(3.6);
+const punished = await page.evaluate(() => window.__dj.state.hp);
+
+check('the slam marks three safe rings and one kill zone',
+  slamSafe.markers === 7 && steppedIn, `${slamSafe.markers} floor markers`);
+check('standing in a blue ring saves you from the slam',
+  survived >= slamSafe.hp && punished < slamOpen.hp,
+  `in a ring -${Math.round(slamSafe.hp - survived)}, out in the open -${Math.round(slamOpen.hp - punished)}`);
+
+await page.evaluate(() => { window.__dj.state.level = 1; });
+
 // and back up again, also by walking
 await page.evaluate(() => {
   const d = window.__dj;

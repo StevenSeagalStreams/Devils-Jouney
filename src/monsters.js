@@ -1,4 +1,4 @@
-import { createMonsterModel, createBoarModel, createArcherModel, createGuardModel } from './characters.js';
+import { createMonsterModel, createBoarModel, createArcherModel, createGuardModel, createBossModel } from './characters.js';
 
 /* One table describing every creature. `hit` is when the blow lands, so the
    whole wind-up is the player's reaction time; `track` is how fast it may keep
@@ -49,6 +49,28 @@ export const KINDS = {
         cooldown: 1.9, track: 0.8, tell: '#ff3b1f' },
     },
     choose: () => 'bash',
+  },
+  boss: {
+    id: 'boss', name: 'Gravherren', model: () => createBossModel(),
+    boss: true,
+    hp: 9, damage: 1.3, speed: 2.2, scale: 1.0, xp: 6, gold: 8, bodyRadius: 2.6,
+    sight: 22, leash: 40, barY: 3.2,
+    attacks: {
+      // a line of ground in front of it, the bread-and-butter swing
+      pisk: { kind: 'pisk', hit: 1.0, recover: 0.7, dmg: 1.1, cooldown: 2.2,
+        track: 2.0, tell: '#ff8a3c', shape: 'line', length: 11, width: 2.6 },
+      // winds up, then runs you down
+      stormlob: { kind: 'stormlob', hit: 1.2, recover: 1.1, dmg: 1.8, cooldown: 7,
+        track: 0, tell: '#ff3b1f', shape: 'charge', length: 16, width: 3.0, speed: 17 },
+      // everything burns except three safe rings
+      knus: { kind: 'knus', hit: 2.6, recover: 1.4, dmg: 3.2, cooldown: 13,
+        track: 0, tell: '#ff2020', shape: 'slam', radius: 15, safeRadius: 2.6, safeCount: 3 },
+    },
+    choose: m => {
+      if (m.slamReady) return 'knus';
+      if (m.chargeReady) return 'stormlob';
+      return 'pisk';
+    },
   },
 };
 

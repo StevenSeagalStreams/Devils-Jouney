@@ -4,7 +4,7 @@ import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel
 import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
 import { KINDS, statsFor } from './monsters.js';
-import { createMausoleum, createDungeon, collideMaze, mazeBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
+import { createMausoleum, createDungeon, collideMaze, mazeBlocked, mazeLineBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
 import { ABILITIES, abilityPower, abilityScale, unlockedAt } from './abilities.js';
 import { UI } from './ui.js';
 
@@ -116,6 +116,7 @@ function setZone(next) {
   zone = next;
   const z = ZONES[next];
   clearMonsters();
+  clearGroundFx();
   arrows.length = 0;
   for (const d of drops.splice(0)) scene.remove(d.obj);
   scene.background = new THREE.Color(z.bg);
@@ -164,7 +165,7 @@ function updateNpcs(dt) {
     : { pos: dungeon.exitSpot, to: 'overworld', label: 'Op i dagslyset', radius: 2.0 };
   const doorDist = Math.hypot(player.pos.x - door.pos.x, player.pos.z - door.pos.z);
   // must step clear of the doorway before it can pull you back the other way
-  if (!doorArmed && doorDist > door.radius + 2.5) doorArmed = true;
+  if (!doorArmed && doorDist > door.radius + 1.0) doorArmed = true;
   const atDoor = doorArmed && doorDist < door.radius;
 
   if (ui.shopOpen || ui.inventoryOpen) ui.hidePrompt();
@@ -231,6 +232,8 @@ function spawnMonster(kindId, level, pos) {
     atk: null,
     cooldown: 0,
     lastHeavy: false,
+    slamT: 6,
+    chargeT: 4,
     hurt: 0,
     angry: 0,            // passive creatures only fight while this is running
     walkPhase: 0,
@@ -285,6 +288,80 @@ function updateTelegraph(m) {
   t.material.opacity = 0.25 + 0.6 * p;
 }
 
+/** Nothing sees, shoots or is shown through a wall. Only the crypt has walls. */
+function hasLineOfSight(a, b) {
+  if (zone !== 'dungeon') return true;
+  return !mazeLineBlocked(a.x, a.z, b.x, b.z);
+}
+
+/* --------------------- ground telegraphs (boss) --------------------- */
+/* Shapes painted on the floor that resolve after a delay: a line for the whip,
+   a lane for the charge, and the slam's kill-zone with its safe rings. */
+const groundFx = [];
+
+function addGroundFx(mesh, dur, resolve, opts = {}) {
+  scene.add(mesh);
+  groundFx.push({ mesh, t: 0, dur, resolve, ...opts });
+}
+
+function laneMesh(x, z, yaw, length, width, colour) {
+  const geo = new THREE.PlaneGeometry(width, length);
+  geo.translate(0, length / 2, 0);
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: colour, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.set(-Math.PI / 2, 0, -yaw);
+  m.position.set(x, groundY(x, z) + 0.05, z);
+  m.renderOrder = 2;
+  return m;
+}
+
+function discMesh(x, z, radius, colour, opacity = 0.3, order = 3) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(radius, 32),
+    new THREE.MeshBasicMaterial({ color: colour, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, groundY(x, z) + 0.06 + order * 0.01, z);
+  m.renderOrder = order;
+  return m;
+}
+
+function updateGroundFx(dt) {
+  for (let i = groundFx.length - 1; i >= 0; i--) {
+    const f = groundFx[i];
+    f.t += dt;
+    const p = Math.min(1, f.t / f.dur);
+    // brighten as it is about to land
+    f.mesh.material.opacity = (f.baseOpacity ?? 0.3) + p * 0.28;
+    if (f.follow) {
+      const src = f.follow();
+      if (src) {
+        f.mesh.position.set(src.x, groundY(src.x, src.z) + 0.05, src.z);
+        f.mesh.rotation.z = -src.yaw;
+      }
+    }
+    if (f.t >= f.dur) {
+      f.resolve?.();
+      scene.remove(f.mesh);
+      f.mesh.geometry.dispose();
+      f.mesh.material.dispose();
+      groundFx.splice(i, 1);
+    }
+  }
+}
+
+function clearGroundFx() {
+  for (const f of groundFx) { scene.remove(f.mesh); f.mesh.geometry.dispose(); f.mesh.material.dispose(); }
+  groundFx.length = 0;
+}
+
+/** Is the player inside a rectangle that starts at (x,z) and runs along yaw? */
+function playerInLane(x, z, yaw, length, width) {
+  const dx = player.pos.x - x, dz = player.pos.z - z;
+  const fx = Math.sin(yaw), fz = Math.cos(yaw);
+  const along = dx * fx + dz * fz;
+  const side = dx * fz - dz * fx;
+  return along > -0.6 && along < length && Math.abs(side) < width / 2 + 0.4;
+}
+
 /* ----------------------------- arrows ----------------------------- */
 const arrows = [];
 let arrowsFired = 0;
@@ -315,8 +392,10 @@ function updateArrows(dt) {
     const p = a.obj.position;
     const hit = Math.hypot(p.x - player.pos.x, p.z - player.pos.z) < 0.75
       && Math.abs(p.y - (groundY(player.pos.x, player.pos.z) + 1.0)) < 1.2;
-    if (hit) hurtPlayer(a.damage);
-    if (hit || a.life <= 0 || p.y < groundY(p.x, p.z) - 0.2) {
+    if (hit) hurtPlayer(a.damage, 'arrow');
+    // an arrow buries itself in the stone rather than passing through it
+    const intoWall = zone === 'dungeon' && mazeBlocked(p.x, p.z, 0.2);
+    if (hit || intoWall || a.life <= 0 || p.y < groundY(p.x, p.z) - 0.2) {
       scene.remove(a.obj);
       arrows.splice(i, 1);
     }
@@ -327,6 +406,117 @@ function updateArrows(dt) {
 function updateMonsters(dt) {
   for (let i = monsters.length - 1; i >= 0; i--) updateMonster(monsters[i], dt, i);
   updateArrows(dt);
+}
+
+function updateBoss(m, dt, dist, toPlayer, sees) {
+  const k = m.kind;
+  // it opens with the whip, then works charge and slam into the rotation
+  m.slamReady = m.slamT <= 0;
+  m.chargeReady = m.chargeT <= 0;
+  m.slamT = Math.max(0, m.slamT - dt);
+  m.chargeT = Math.max(0, m.chargeT - dt);
+
+  if (m.state === 'idle') {
+    if (sees && dist < k.sight) { m.state = 'chase'; m.stateT = 0; }
+    m.walkPhase += dt * 2;
+    return;
+  }
+
+  if (m.state === 'chase') {
+    m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * 3.5);
+    if (dist > 3.2) { m.pos.addScaledVector(toPlayer, m.speed * dt); m.walkPhase += dt * 6; }
+    if (m.cooldown <= 0 && sees && dist < 16) startBossAttack(m, k.choose(m), dist);
+    return;
+  }
+
+  if (m.state === 'attack') {
+    const a = m.atk;
+    a.t += dt;
+    // it stops re-aiming once the lash is committed — that gap is the dodge
+    const locked = a.lockAt !== undefined && a.t >= a.lockAt;
+    if (a.track > 0 && !a.hasHit && !locked) {
+      m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * a.track);
+    }
+    if (locked && a.lockedYaw === undefined) a.lockedYaw = m.yaw;
+    if (a.shape === 'charge' && a.charging) {
+      // the run itself: it ploughs forward and flattens whatever it touches
+      const dir = tmpFacing.set(Math.sin(m.yaw), 0, Math.cos(m.yaw));
+      m.pos.addScaledVector(dir, a.speed * dt);
+      m.walkPhase += dt * 16;
+      a.chargeT -= dt;
+      if (!a.hitDone && Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z) < 2.2) {
+        a.hitDone = true;
+        hurtPlayer(m.damage * a.dmg, 'boss:whip');
+      }
+      if (a.chargeT <= 0 || (zone === 'dungeon' && mazeBlocked(m.pos.x + dir.x * 1.2, m.pos.z + dir.z * 1.2, 0.9))) {
+        a.charging = false;
+        a.t = a.hit;                       // fall into the recovery
+      }
+    }
+    if (a.t >= a.hit + a.recover) {
+      m.state = 'chase';
+      m.stateT = 0;
+      m.cooldown = a.cooldown * 0.35;
+      m.atk = null;
+    }
+    return;
+  }
+}
+
+function startBossAttack(m, name, dist) {
+  const a = { ...m.kind.attacks[name], t: 0, hasHit: false };
+  m.atk = a;
+  m.state = 'attack';
+  m.stateT = 0;
+
+  if (a.shape === 'line') {
+    // the lane tracks the boss until it commits, then it is fixed and dodgeable
+    a.lockAt = a.hit * 0.55;
+    const aimYaw = () => (a.lockedYaw !== undefined ? a.lockedYaw : m.yaw);
+    const mesh = laneMesh(m.pos.x, m.pos.z, m.yaw, a.length, a.width, a.tell);
+    addGroundFx(mesh, a.hit, () => {
+      if (playerInLane(m.pos.x, m.pos.z, aimYaw(), a.length, a.width) && !inTown()) {
+        hurtPlayer(m.damage * a.dmg, 'boss:whip');
+      } else {
+        ui.floatText('forbi!', screenOf(m.pos, m.kind.barY), 'loot');
+      }
+    }, { baseOpacity: 0.25, follow: () => ({ x: m.pos.x, z: m.pos.z, yaw: aimYaw() }) });
+    ui.toast('Gravherren svinger pisken', 1100);
+  } else if (a.shape === 'charge') {
+    const mesh = laneMesh(m.pos.x, m.pos.z, m.yaw, a.length, a.width, a.tell);
+    addGroundFx(mesh, a.hit, () => {
+      a.charging = true;
+      a.chargeT = a.length / a.speed;
+      a.hitDone = false;
+    }, { baseOpacity: 0.3 });
+    ui.toast('Gravherren stormer!', 1200);
+  } else if (a.shape === 'slam') {
+    // the whole hall dies except three rings — stand in one
+    const safe = [];
+    const base = Math.random() * Math.PI * 2;
+    for (let i = 0; i < a.safeCount; i++) {
+      const ang = base + (i / a.safeCount) * Math.PI * 2;
+      const r = 6.5 + Math.random() * 2.5;
+      const sx = m.pos.x + Math.cos(ang) * r, sz = m.pos.z + Math.sin(ang) * r;
+      safe.push({ x: sx, z: sz, r: a.safeRadius });
+      // safe rings sit above the kill zone so they stay clearly blue
+      const ring = discMesh(sx, sz, a.safeRadius, '#2f9bff', 0.5, 6);
+      addGroundFx(ring, a.hit, null, { baseOpacity: 0.5 });
+      const lip = discMesh(sx, sz, a.safeRadius * 1.12, '#9fd8ff', 0.3, 5);
+      addGroundFx(lip, a.hit, null, { baseOpacity: 0.3 });
+    }
+    const danger = discMesh(m.pos.x, m.pos.z, a.radius, '#e01818', 0.16, 3);
+    addGroundFx(danger, a.hit, () => {
+      const inSafe = safe.some(s => Math.hypot(player.pos.x - s.x, player.pos.z - s.z) < s.r);
+      const inBlast = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z) < a.radius;
+      ringFx(m.pos.x, m.pos.z, a.radius, '#ff5a3c', 0.5);
+      if (inBlast && !inSafe && !inTown()) hurtPlayer(m.damage * a.dmg, 'boss:slam');
+      else ui.floatText('i sikkerhed!', screenOf(player.pos, 2.2), 'loot');
+    }, { baseOpacity: 0.16 });
+    ui.toast('Stil dig i en blå cirkel!', 2200);
+    m.slamT = a.cooldown;
+  }
+  if (a.shape === 'charge') m.chargeT = a.cooldown;
 }
 
 function updateMonster(m, dt, index) {
@@ -355,6 +545,12 @@ function updateMonster(m, dt, index) {
   toPlayer.normalize();
 
   const k = m.kind;
+  const sees = hasLineOfSight(m.pos, player.pos);
+  if (k.boss) {
+    updateBoss(m, dt, dist, toPlayer, sees);
+    finishMonsterFrame(m, dt);
+    return;
+  }
   const hostile = (!k.passive || m.angry > 0) && !inTown();
   const homeDist = Math.hypot(m.pos.x - m.home.x, m.pos.z - m.home.z);
 
@@ -370,7 +566,7 @@ function updateMonster(m, dt, index) {
     m.pos.add(step);
     if (step.lengthSq() > 1e-6) m.yaw = Math.atan2(step.x, step.z);
     m.walkPhase += dt * 3;
-    if (hostile && dist < k.sight) { m.state = 'chase'; m.stateT = 0; }
+    if (hostile && sees && dist < k.sight) { m.state = 'chase'; m.stateT = 0; }
   } else if (m.state === 'chase') {
     m.yaw = turnTowards(m.yaw, Math.atan2(toPlayer.x, toPlayer.z), dt * 6);
     const band = k.keepAway;
@@ -390,7 +586,7 @@ function updateMonster(m, dt, index) {
       }
     }
     const reach = band ? band.max : 2.3;
-    if (dist < reach && m.cooldown <= 0 && hostile) startAttack(m, k.choose(m));
+    if (dist < reach && m.cooldown <= 0 && hostile && sees) startAttack(m, k.choose(m));
     if (!hostile || dist > k.leash) { m.state = 'idle'; m.stateT = 0; }
   } else if (m.state === 'attack') {
     const a = m.atk;
@@ -401,11 +597,13 @@ function updateMonster(m, dt, index) {
     if (!a.hasHit && a.t >= a.hit) {
       a.hasHit = true;
       if (a.projectile) {
-        fireArrow(m, m.damage * a.dmg);
+        // do not loose an arrow into a wall the player has stepped behind
+        if (sees) fireArrow(m, m.damage * a.dmg);
+        else ui.floatText('mistet af syne', screenOf(m.pos, k.barY), 'loot');
       } else {
         const facing = tmpFacing.set(Math.sin(m.yaw), 0, Math.cos(m.yaw));
-        if (dist < a.range && toPlayer.dot(facing) > 0.25) {
-          hurtPlayer(m.damage * a.dmg * (0.9 + Math.random() * 0.2));
+        if (dist < a.range && toPlayer.dot(facing) > 0.25 && sees) {
+          hurtPlayer(m.damage * a.dmg * (0.9 + Math.random() * 0.2), `${m.kindId}:${a.kind}`);
         } else {
           ui.floatText('forbi!', screenOf(m.pos, k.barY), 'loot');
         }
@@ -418,15 +616,21 @@ function updateMonster(m, dt, index) {
     }
   }
 
+  finishMonsterFrame(m, dt);
+}
+
+/** Shared per-frame tail: walls, the fence, spacing, and the animation. */
+function finishMonsterFrame(m, dt) {
   if (m.state !== 'idle' && inTown()) { m.state = 'idle'; m.stateT = 0; m.atk = null; }
 
-  if (zone === 'dungeon') collideMaze(m.pos, 0.55);
+  if (zone === 'dungeon') collideMaze(m.pos, m.kind.boss ? 1.1 : 0.55);
 
   // never stand inside the player
   const sep = tmpV.copy(m.pos).sub(player.pos);
   sep.y = 0;
   const sepD = sep.length();
-  if (sepD < 1.4 && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), 1.4);
+  const body = m.kind.bodyRadius ?? 1.4;
+  if (sepD < body && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), body);
   m.pos.y = 0;
 
   // the town fence turns everything away — applied last so nothing, not even
@@ -468,7 +672,8 @@ function animateMonster(m, dt) {
     feet.push({ mesh: u.backR.foot, half: u.backR.footHalf },
       { mesh: u.backL.foot, half: u.backL.footHalf });
   }
-  plantFeet(m.obj, u.body, m.kindId === 'boar' ? 0.62 : m.kindId === 'archer' ? 0.92 : m.kindId === 'guard' ? 1.02 : 0.98, feet);
+  const hipHeight = { boar: 0.62, archer: 0.92, guard: 1.02, boss: 1.5 }[m.kindId] ?? 0.98;
+  plantFeet(m.obj, u.body, hipHeight, feet);
   u.headPivot.rotation.x = (m.kindId === 'brute' ? -0.22 : 0) + Math.sin(m.walkPhase * 0.5) * 0.05;
 
   const idle = Math.sin(m.walkPhase * 0.9) * 0.25;
@@ -483,6 +688,21 @@ function animateMonster(m, dt) {
       u.armL.shoulder.rotation.x = -1.5;
       u.armR.shoulder.rotation.x = L(-1.2 - p * 0.4, -0.2, ease);
       u.armR.elbow.rotation.x = L(-1.4 * p, -0.2, ease);
+    } else if (a.kind === 'pisk') {
+      // wind the whip back over the shoulder, then crack it forward
+      const wind = Math.sin(Math.min(p, 1) * Math.PI * 0.5);
+      u.armR.shoulder.rotation.x = L(-2.2 * wind, 1.3, ease);
+      u.armR.shoulder.rotation.z = L(-0.5 * wind, 0.2, ease);
+      u.armL.shoulder.rotation.x = L(-0.5 * wind, idle, ease);
+    } else if (a.kind === 'stormlob') {
+      u.armR.shoulder.rotation.x = L(-0.4 - p * 0.6, -1.4, ease);
+      u.armL.shoulder.rotation.x = L(-0.4 - p * 0.6, -1.4, ease);
+      if (u.lean) u.lean.rotation.x = 0.14 + p * 0.35;
+    } else if (a.kind === 'knus') {
+      const raise = Math.sin(Math.min(p, 1) * Math.PI * 0.5) * 2.7;
+      u.armR.shoulder.rotation.x = L(-raise, 2.6, ease);
+      u.armL.shoulder.rotation.x = L(-raise, 2.6, ease);
+      if (u.lean) u.lean.rotation.x = 0.14 - 0.3 * p + 0.7 * ease;
     } else if (a.kind === 'heavy' || a.kind === 'bash') {
       const raise = Math.sin(p * Math.PI * 0.5) * 2.6;
       u.armR.shoulder.rotation.x = L(-raise + ease * 3.2, idle, ease * 0.7);
@@ -791,6 +1011,8 @@ function killMonster(m) {
 /** Bring the same kind back at its post after a breather. */
 const pendingSpawns = [];
 function scheduleRespawn(m) {
+  // the crypt stays cleared until you leave and come back
+  if (zone === 'dungeon') return;
   pendingSpawns.push({ kindId: m.kindId, home: m.home.clone(), t: 8 + Math.random() * 6, zone });
 }
 function updateRespawns(dt) {
@@ -849,7 +1071,10 @@ function playerAttack(dt) {
   if (player.attackTime > player.attackDur) player.attackTime = -1;
 }
 
-function hurtPlayer(amount) {
+const hurtLog = [];
+function hurtPlayer(amount, source = '?') {
+  hurtLog.push({ amount: +amount.toFixed(1), source, t: +gameTime.toFixed(2) });
+  if (hurtLog.length > 40) hurtLog.shift();
   if (inTown()) return;             // the fence is the safe line
   if (state.buffs.shield > 0) amount *= 0.5;
   state.hp -= amount;
@@ -1119,13 +1344,15 @@ function updateCamera(dt) {
   if (zone !== 'dungeon') {
     want.y = Math.max(want.y, heightAt(want.x, want.z) + 1.2);
   } else {
-    // corridors are narrow: pull the camera in until it clears the stone, and
-    // as it gets close, lift it so it still looks over her rather than through her
+    // corridors are narrow: pull the camera in until the line back to her is
+    // clear — testing only the camera point let it sit through a doorway with a
+    // wall in between — and lift it as it closes so it looks over her head
     const px = player.pos.x, pz = player.pos.z;
     let t = 1;
     for (let i = 12; i >= 1; i--) {
       const f = i / 12;
-      if (!mazeBlocked(px + (want.x - px) * f, pz + (want.z - pz) * f, 0.55)) { t = f; break; }
+      const cx = px + (want.x - px) * f, cz = pz + (want.z - pz) * f;
+      if (!mazeBlocked(cx, cz, 0.55) && !mazeLineBlocked(px, pz, cx, cz, 0.4)) { t = f; break; }
       t = (i - 1) / 12;
     }
     t = Math.max(0.12, t);
@@ -1177,9 +1404,10 @@ function frame() {
     updateDrops(dt);
     updateNpcs(dt);
     updateAbilities(dt);
+    updateGroundFx(dt);
   }
   if (zone === 'dungeon') {
-    dungeon.update(dt, gameTime);
+    dungeon.update(dt, gameTime, player.pos);
     lantern.position.set(player.pos.x, groundY(player.pos.x, player.pos.z) + 1.7, player.pos.z);
   }
   else { world.update(dt); world.followSun(player.pos); }
@@ -1201,7 +1429,8 @@ function frame() {
     const p = screenOf(m.pos, m.kind.barY);
     ui.updateEnemyBar(m.id, {
       x: p.x, y: p.y,
-      visible: p.visible && camera.position.distanceTo(m.obj.position) < 45,
+      visible: p.visible && camera.position.distanceTo(m.obj.position) < 45
+        && hasLineOfSight(player.pos, m.pos),
       pct: m.hp / m.maxHp,
     });
   }
@@ -1292,7 +1521,12 @@ window.__dj = {
   get monster() { return nearestMonster() || monsters[0]; },
   get zone() { return zone; },
   setZone,
-  mausoleum, dungeon, mazeBlocked,
+  mausoleum, dungeon, mazeBlocked, hasLineOfSight,
+  get groundFx() { return groundFx; },
+  playerInLane,
+  get hurtLog() { return hurtLog; },
+  startBossAttack,
+  startAttackOn: (m, name) => startAttack(m, name),
   attack() { wantAttack = true; },
   useAbility,
   abilities: ABILITIES,

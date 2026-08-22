@@ -678,3 +678,118 @@ export function createGuardModel() {
   root.userData = { body, lean, headPivot, armR, armL, legR, legL, shield };
   return root;
 }
+
+/** The crypt lord: big, horned, and carrying a whip. */
+export function createBossModel() {
+  const hide = flat('#7a2f2a');
+  const dark = flat('#4a1c1a');
+  const bone = flat('#e0d6c2');
+  const metal = flat('#57524a');
+
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.position.y = 1.5;
+  root.add(body);
+  const lean = new THREE.Group();
+  lean.rotation.x = 0.14;
+  body.add(lean);
+
+  const torso = box(1.15, 1.05, 0.75, hide);
+  torso.position.y = 0.2;
+  lean.add(torso);
+  const plate = box(1.2, 0.45, 0.8, metal);
+  plate.position.y = 0.5;
+  lean.add(plate);
+  const hipBox = box(0.95, 0.45, 0.7, dark);
+  hipBox.position.y = -0.45;
+  body.add(hipBox);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 0.95, 0.08);
+  lean.add(headPivot);
+  const head = box(0.55, 0.5, 0.58, hide);
+  headPivot.add(head);
+  const jaw = box(0.42, 0.16, 0.4, dark);
+  jaw.position.set(0, -0.3, 0.1);
+  headPivot.add(jaw);
+  for (const sgn of [-1, 1]) {
+    const eye = sphere(0.06, new THREE.MeshBasicMaterial({ color: '#ffe23c' }), 8);
+    eye.position.set(0.14 * sgn, 0.04, 0.29);
+    headPivot.add(eye);
+    // long swept horns
+    for (let i = 0; i < 3; i++) {
+      const seg = new THREE.Mesh(new THREE.ConeGeometry(0.11 - i * 0.03, 0.3, 6), bone);
+      seg.position.set(0.24 * sgn + i * 0.07 * sgn, 0.3 + i * 0.22, -0.1 - i * 0.12);
+      seg.rotation.set(-0.5 - i * 0.2, 0, -0.4 * sgn);
+      seg.castShadow = true;
+      headPivot.add(seg);
+    }
+  }
+
+  function arm(side) {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(0.7 * side, 0.5, 0);
+    lean.add(shoulder);
+    const pauldron = sphere(0.3, metal, 9);
+    pauldron.scale.set(1.1, 0.85, 1.05);
+    shoulder.add(pauldron);
+    const upper = caps(0.19, 0.16, 0.6, hide, 8);
+    upper.position.y = -0.35;
+    shoulder.add(upper);
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.66;
+    shoulder.add(elbow);
+    const fore = caps(0.16, 0.14, 0.55, dark, 8);
+    fore.position.y = -0.28;
+    elbow.add(fore);
+    const claw = new THREE.Group();
+    claw.position.y = -0.58;
+    elbow.add(claw);
+    const fist = sphere(0.17, dark, 8);
+    claw.add(fist);
+    return { shoulder, elbow, claw };
+  }
+  const armR = arm(-1), armL = arm(1);
+
+  // the whip: a chain of shrinking segments hanging from the main hand
+  const whip = new THREE.Group();
+  for (let i = 0; i < 9; i++) {
+    const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.07 - i * 0.005, 0.065 - i * 0.005, 0.34, 6), dark);
+    seg.position.y = -0.18 - i * 0.32;
+    seg.rotation.z = Math.sin(i * 1.3) * 0.16;
+    whip.add(seg);
+  }
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.24, 5), bone);
+  tip.position.y = -0.18 - 9 * 0.32;
+  whip.add(tip);
+  armR.claw.add(whip);
+
+  function leg(side) {
+    const hip = new THREE.Group();
+    hip.position.set(0.34 * side, -0.55, 0);
+    body.add(hip);
+    const thigh = caps(0.24, 0.2, 0.58, hide, 8);
+    thigh.position.y = -0.29;
+    hip.add(thigh);
+    const knee = new THREE.Group();
+    knee.position.y = -0.58;
+    hip.add(knee);
+    const shin = caps(0.2, 0.17, 0.5, dark, 8);
+    shin.position.y = -0.25;
+    knee.add(shin);
+    const foot = box(0.38, 0.2, 0.55, dark);
+    foot.position.set(0, -0.5, 0.1);
+    knee.add(foot);
+    for (let i = 0; i < 3; i++) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 4), bone);
+      c.position.set((i - 1) * 0.1, -0.56, 0.34);
+      c.rotation.x = Math.PI * 0.62;
+      knee.add(c);
+    }
+    return { hip, knee, foot, footHalf: 0.1 };
+  }
+  const legR = leg(-1), legL = leg(1);
+
+  root.userData = { body, lean, headPivot, armR, armL, legR, legL, whip };
+  return root;
+}

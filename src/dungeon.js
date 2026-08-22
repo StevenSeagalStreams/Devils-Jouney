@@ -9,6 +9,8 @@ export const MAUSOLEUM = { x: -26, z: -6 };
 export const DUNGEON_ORIGIN = new THREE.Vector3(2000, 0, 2000);
 
 export const MAZE = { w: 8, h: 8, cell: 8, wall: 0.7, height: 5 };
+// a 3x3 block of cells knocked into one hall for the boss
+export const BOSS_ROOM = { x: 4, z: 0, w: 3, h: 3 };
 
 const flat = c => new THREE.MeshLambertMaterial({ color: new THREE.Color(c), flatShading: true });
 const stone = () => flat('#8f8b82');
@@ -170,6 +172,14 @@ function generateMaze(seedValue) {
   cells[MAZE.h - 1][0].n = false;
   cells[MAZE.h - 2][0].s = false;
 
+  // the boss hall: clear every wall inside its block so it is one big room
+  for (let z = BOSS_ROOM.z; z < BOSS_ROOM.z + BOSS_ROOM.h; z++) {
+    for (let x = BOSS_ROOM.x; x < BOSS_ROOM.x + BOSS_ROOM.w; x++) {
+      if (x + 1 < BOSS_ROOM.x + BOSS_ROOM.w) { cells[z][x].e = false; cells[z][x + 1].w = false; }
+      if (z + 1 < BOSS_ROOM.z + BOSS_ROOM.h) { cells[z][x].s = false; cells[z + 1][x].n = false; }
+    }
+  }
+
   // two open chambers to fight in: clear the walls inside a 2x2 block
   const chambers = [[1, 1], [MAZE.w - 3, MAZE.h - 4]];
   for (const [bx, bz] of chambers) {
@@ -239,6 +249,19 @@ export function collideMaze(pos, radius = 0.45) {
   pos.z = THREE.MathUtils.clamp(pos.z, O.z - HALF_H + 0.6, O.z + HALF_H - 0.6);
 }
 
+/** Does a straight line between two points cross a wall? Used for line of
+ *  sight: what cannot see you cannot shoot you, and its bar stays hidden. */
+export function mazeLineBlocked(x1, z1, x2, z2, radius = 0.22) {
+  const dx = x2 - x1, dz = z2 - z1;
+  const dist = Math.hypot(dx, dz);
+  const steps = Math.max(2, Math.ceil(dist / 0.45));
+  for (let i = 1; i < steps; i++) {
+    const f = i / steps;
+    if (mazeBlocked(x1 + dx * f, z1 + dz * f, radius)) return true;
+  }
+  return false;
+}
+
 /** Is this spot inside a wall? Used to keep the camera out of the stone. */
 export function mazeBlocked(x, z, radius = 0.3) {
   for (const b of wallsNear(x, z, radius + 0.4)) {
@@ -249,7 +272,12 @@ export function mazeBlocked(x, z, radius = 0.3) {
   return false;
 }
 
-function brazier(parent, x, z, lights) {
+/* Braziers are cheap: the stand and flame are just meshes. Real lights come
+   from a small fixed pool that follows the player around, because a scene full
+   of point lights blows past the shader's uniform budget and renders black. */
+const LIGHT_POOL = 6;
+
+function brazier(parent, x, z, braziers) {
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 1.3, 8), darkStone());
   stem.position.set(x, 0.65, z);
   parent.add(stem);
@@ -260,10 +288,7 @@ function brazier(parent, x, z, lights) {
     new THREE.MeshBasicMaterial({ color: '#ff9a4a' }));
   fire.position.set(x, 1.8, z);
   parent.add(fire);
-  const light = new THREE.PointLight('#ff9a4a', 3.2, 20, 1.2);
-  light.position.set(x, 2.1, z);
-  parent.add(light);
-  lights.push({ light, fire, phase: Math.random() * 6.28 });
+  braziers.push({ x, z, fire, phase: Math.random() * 6.28 });
 }
 
 /** Cells with exactly one way out — good places to hide something. */
@@ -282,7 +307,14 @@ function deadEnds() {
 export function createDungeon() {
   const g = new THREE.Group();
   g.position.copy(O);
-  const lights = [];
+  const braziers = [];
+  const pool = [];
+  for (let i = 0; i < LIGHT_POOL; i++) {
+    const l = new THREE.PointLight('#ff9a4a', 0, 22, 1.2);
+    l.visible = false;
+    g.add(l);
+    pool.push(l);
+  }
 
   g.add(new THREE.AmbientLight('#7d7690', 1.3));
   g.add(new THREE.HemisphereLight('#8a82a0', '#332c26', 0.9));
@@ -327,7 +359,7 @@ export function createDungeon() {
     const lid = box(2.2, 0.22, 3.4, darkStone());
     lid.position.set(lx - 2.6, 1.0, lz);
     g.add(lid);
-    brazier(g, lx + 2.6, lz, lights);
+    brazier(g, lx + 2.6, lz, braziers);
   }
 
   // a torch in roughly every third cell, so corners stay readable
@@ -335,7 +367,24 @@ export function createDungeon() {
     for (let x = 0; x < MAZE.w; x++) {
       if ((x * 3 + z * 5) % 3 !== 0) continue;
       const c = cellCentre(x, z);
-      brazier(g, c.x - O.x, c.z - O.z, lights);
+      brazier(g, c.x - O.x, c.z - O.z, braziers);
+    }
+  }
+
+  // the boss hall gets its own braziers and a broken floor pattern
+  {
+    const c = cellCentre(BOSS_ROOM.x + 1, BOSS_ROOM.z + 1);
+    const lx = c.x - O.x, lz = c.z - O.z;
+    const dais = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 7.0, 0.16, 24), flat('#7a6f62'));
+    dais.position.set(lx, 0.08, lz);
+    dais.receiveShadow = true;
+    g.add(dais);
+    for (const [ox, oz] of [[-9, -9], [9, -9], [-9, 9], [9, 9]]) brazier(g, lx + ox, lz + oz, braziers);
+    for (const [ox, oz] of [[-8.5, 0], [8.5, 0]]) {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, MAZE.height, 10), trimMat);
+      col.position.set(lx + ox, MAZE.height / 2, lz + oz);
+      col.castShadow = true;
+      g.add(col);
     }
   }
 
@@ -348,10 +397,13 @@ export function createDungeon() {
     stair.add(st);
   }
   g.add(stair);
-  brazier(g, entrance.x - O.x - 2.2, entrance.z - O.z, lights);
+  brazier(g, entrance.x - O.x - 2.2, entrance.z - O.z, braziers);
 
   // monsters wait in dead ends and in the two chambers
   // fill the crypt: every dead end, then the cells furthest from the door
+  const bossCentre = cellCentre(BOSS_ROOM.x + 1, BOSS_ROOM.z + 1);
+  const inBossRoom = (x, z) => x >= BOSS_ROOM.x && x < BOSS_ROOM.x + BOSS_ROOM.w
+    && z >= BOSS_ROOM.z && z < BOSS_ROOM.z + BOSS_ROOM.h;
   const isEntrance = (x, z) => x === 0 && z === MAZE.h - 1;
   const ends = deadEnds().filter(([x, z]) => !isEntrance(x, z));
   const far = [];
@@ -365,8 +417,9 @@ export function createDungeon() {
   const posts = [];
   const rota = ['archer', 'brute', 'guard', 'brute', 'archer', 'guard', 'brute', 'archer'];
   const place = (x, z) => posts.push({ kind: rota[posts.length % rota.length], pos: cellCentre(x, z) });
-  for (const [x, z] of ends) place(x, z);
+  for (const [x, z] of ends) if (!inBossRoom(x, z)) place(x, z);
   for (const c of far) {
+    if (inBossRoom(c.x, c.z)) continue;
     if (posts.length >= 9) break;
     // keep them spread out
     if (posts.some(p => p.pos.distanceTo(cellCentre(c.x, c.z)) < MAZE.cell * 1.9)) continue;
@@ -374,24 +427,37 @@ export function createDungeon() {
   }
   posts.push({ kind: 'guard', pos: cellCentre(CHAMBERS[1][0], CHAMBERS[1][1]) });
   posts.push({ kind: 'brute', pos: cellCentre(CHAMBERS[0][0] + 1, CHAMBERS[0][1] + 1) });
+  posts.push({ kind: 'boss', pos: bossCentre.clone() });
 
   const exitSpot = new THREE.Vector3(entrance.x, 0, entrance.z + 2.4);
-  const spawnSpot = new THREE.Vector3(entrance.x, 0, entrance.z - 1.0);
+  const spawnSpot = new THREE.Vector3(entrance.x, 0, entrance.z - 2.4);
 
   return {
     group: g,
-    lights,
+    braziers,
     exitSpot,
     spawnSpot,
     posts,
     cells: CELLS,
     deadEnds: ends,
-    update(dt, t) {
-      for (const b of lights) {
-        const f = 0.75 + Math.sin(t * 7 + b.phase) * 0.12 + Math.sin(t * 13 + b.phase) * 0.06;
-        b.light.intensity = 3.2 * f;
-        b.fire.scale.setScalar(0.9 + f * 0.2);
+    bossCentre,
+    update(dt, t, playerPos) {
+      // flicker every flame, but only light the handful nearest the player
+      for (const b of braziers) {
+        b.flicker = 0.75 + Math.sin(t * 7 + b.phase) * 0.12 + Math.sin(t * 13 + b.phase) * 0.06;
+        b.fire.scale.setScalar(0.9 + b.flicker * 0.2);
+        b.d = playerPos
+          ? Math.hypot(b.x + O.x - playerPos.x, b.z + O.z - playerPos.z)
+          : Math.hypot(b.x, b.z);
       }
+      const near = braziers.slice().sort((a, b) => a.d - b.d).slice(0, LIGHT_POOL);
+      pool.forEach((l, i) => {
+        const b = near[i];
+        if (!b || b.d > 30) { l.visible = false; return; }
+        l.visible = true;
+        l.position.set(b.x, 2.1, b.z);
+        l.intensity = 3.4 * b.flicker;
+      });
     },
   };
 }
