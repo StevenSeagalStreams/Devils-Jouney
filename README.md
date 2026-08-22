@@ -15,6 +15,8 @@ no build step, no bundler, no install. Kill the monster, pick up better gear, le
 
 ![abilities](docs/screenshot-abilities.png)
 
+![the skill tree](docs/screenshot-skilltree.png)
+
 ## Play it
 
 The page uses ES modules, so it needs to be served over http (opening `index.html`
