@@ -124,10 +124,23 @@ Two things make a skill stronger:
   and what it is currently worth.
 
 That is what makes a finished branch worth more than thirty scattered points. At
-level 30 a committed blade build lands a `Dommedag` for about four times a
+level 30 a committed blade build lands a `Dommedag` for about three times a
 normal monster's whole health; the same thirty points spread across everything
-land it for two. Sustained damage comes out close either way — the specialist is
-not strictly better, they just hit like a truck once a minute.
+land it for two. Time to kill the crypt boss comes out close either way — 4.7s
+against 4.8s — so the specialist is not strictly better, they just hit much
+harder in one go.
+
+The tree is meant to be worth having and not worth abusing. Untreed, that boss
+fight takes about 12 seconds; the best build at max level takes 4.2. The boss
+lands its first attack one second in and its big one at 2.6, so it always gets
+its whole rotation off — except at the very top, with a finished branch and a
+legendary weapon, where it drops in 2.2 seconds. That is the one place the game
+is meant to feel unfair, and you have to earn it.
+
+`node tools/balance.mjs` prints that whole table. It is a tick-by-tick simulation
+of the real combat loop — stamina, cooldowns, swing animations, buffs — because
+fights here last seconds, and a 40-second cooldown measured over an infinite
+fight tells you nothing true about a four-second one.
 
 The passives feed the character sheet directly: life, weapon damage, crit,
 movement and attack speed, lifesteal and regeneration. Open the bag to see the
@@ -176,7 +189,7 @@ src/dungeon.js      the mausoleum above ground and the crypt below
 src/ui.js           HUD, bag, tooltips, floating numbers
 tools/shot.mjs      headless screenshot helper
 tools/playtest.mjs  headless play-through with assertions
-tools/balance.mjs   prints what four builds hit for at each level (plain node)
+tools/balance.mjs   simulates real fights for six builds at each level (plain node)
 ```
 
 ## Checking it still works

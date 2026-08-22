@@ -6,7 +6,7 @@ import { createTown } from './town.js';
 import { KINDS, statsFor } from './monsters.js';
 import { createMausoleum, createDungeon, collideMaze, mazeBlocked, mazeLineBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
 import { ABILITIES, ABILITY_BY_ID, abilityPower, BAR_SLOTS } from './abilities.js';
-import { NODE_BY_ID, MAX_LEVEL, skillPower, passiveTotals, pointsLeft, canSpend,
+import { NODES, NODE_BY_ID, MAX_LEVEL, skillPower, passiveTotals, pointsLeft, canSpend,
          sanitizeBar, autoAssign, spentPoints } from './skilltree.js';
 import { UI } from './ui.js';
 
@@ -1040,6 +1040,11 @@ function gainXp(amount) {
   }
 }
 
+/* One swing can only ever drink so much, however many it lands on. */
+const LIFESTEAL_CAP = 0.12;
+let lifestealThisHit = 0;
+function beginSwing() { lifestealThisHit = 0; }
+
 function damageMonster(m, amount, crit) {
   if (!m || m.dead) return;
   // a shield guard shrugs off anything that comes at its face
@@ -1055,11 +1060,16 @@ function damageMonster(m, amount, crit) {
   if (m.kind.passive) { m.angry = 12; if (m.state === 'idle') { m.state = 'chase'; m.stateT = 0; } }
   ui.floatText(blocked ? `blokeret ${amount}` : `${amount}`, screenOf(m.pos, m.kind.barY),
     blocked ? 'loot' : crit ? 'crit' : 'dmg');
-  // Blodtørst: a slice of what you dealt comes back
+  // Blodtørst: a slice of what you dealt comes back. Capped per swing, because
+  // one Dommedag into a crowd would otherwise be a full heal.
   const t = totals();
   if (t.lifesteal > 0 && !state.dead) {
-    const back = amount * t.lifesteal;
-    if (back >= 0.05) state.hp = Math.min(t.maxHp, state.hp + back);
+    const room = t.maxHp * LIFESTEAL_CAP - lifestealThisHit;
+    const back = Math.min(amount * t.lifesteal, Math.max(0, room));
+    if (back >= 0.05) {
+      lifestealThisHit += back;
+      state.hp = Math.min(t.maxHp, state.hp + back);
+    }
   }
   if (m.hp <= 0) killMonster(m);
 }
@@ -1141,6 +1151,7 @@ function playerAttack(dt) {
   if (!player.hasHit && p > 0.34) {
     player.hasHit = true;
     const hit = monstersInRange(player.pos, 3.0, 0.35);
+    beginSwing();
     if (hit.length) {
       const crit = Math.random() < t.crit;
       const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
@@ -1239,6 +1250,7 @@ function useAbility(slot) {
   }
 
   const power = abilityPower(ability, mult, t);
+  beginSwing();
   state.stamina -= ability.stamina;
   state.cooldowns[ability.id] = ability.cooldown;
 
@@ -1638,6 +1650,14 @@ window.__dj = {
   skillPower: id => skillPower(id, state.ranks),
   passives: () => passiveTotals(state.ranks),
   pointsLeft: () => pointsLeft(state.level, state.ranks),
+  nodes: NODES,
+  nodeById: NODE_BY_ID,
+  /** What one press of a tree skill is currently worth, for the balance guards. */
+  abilityValue(id) {
+    const node = NODE_BY_ID[id];
+    const ability = ABILITY_BY_ID[node.ability];
+    return abilityPower(ability, skillPower(id, state.ranks), totals());
+  },
   spent: () => spentPoints(state.ranks),
   /** Test hook: hand out ranks without paying for them. */
   learn(id, rank = 1) {

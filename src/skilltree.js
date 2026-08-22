@@ -46,8 +46,8 @@ export const NODES = [
   {
     id: 'blodtorst', name: 'Blodtørst', branch: 'klinge', tier: 2, kind: 'passive',
     maxRank: 5, reqLevel: 6, requires: ['hug'],
-    grants: { lifesteal: 0.012 },
-    text: 'Du suger liv af dine slag: 1,2% af skaden pr. rang.',
+    grants: { lifesteal: 0.007 },
+    text: 'Du suger liv af dine slag: 0,7% af skaden pr. rang.',
   },
   {
     id: 'hvirvelvind', name: 'Hvirvelvind', branch: 'klinge', tier: 2, kind: 'active',
@@ -59,7 +59,8 @@ export const NODES = [
     id: 'dommedag', name: 'Dommedag', branch: 'klinge', tier: 3, kind: 'active',
     ability: 'dommedag', maxRank: 5, reqLevel: 18, requires: ['hvirvelvind'],
     text: 'Slår jorden itu omkring dig.',
-    synergies: [{ id: 'hvirvelvind', per: 0.06 }, { id: 'hug', per: 0.04 }, { id: 'blodtorst', per: 0.03 }],
+    synergies: [{ id: 'hvirvelvind', per: 0.06 }, { id: 'hug', per: 0.04 },
+      { id: 'blodtorst', per: 0.03 }, { id: 'haerdet', per: 0.03 }],
   },
 
   /* ----------------------------- Jagt ----------------------------- */
@@ -89,9 +90,9 @@ export const NODES = [
   },
   {
     id: 'kampraseri', name: 'Kampraseri', branch: 'jagt', tier: 3, kind: 'active',
-    ability: 'kampraseri', maxRank: 5, reqLevel: 12, requires: ['ildstod'],
+    ability: 'kampraseri', maxRank: 5, reqLevel: 18, requires: ['ildstod'],
     text: 'Du går bersærk og slår hårdere et stykke tid.',
-    synergies: [{ id: 'fodfaeste', per: 0.05 }, { id: 'ildstod', per: 0.035 }],
+    synergies: [{ id: 'fodfaeste', per: 0.05 }, { id: 'ildstod', per: 0.035 }, { id: 'skarp', per: 0.03 }],
   },
 
   /* ---------------------------- Vogter ---------------------------- */
@@ -99,7 +100,7 @@ export const NODES = [
     id: 'forbinding', name: 'Forbinding', branch: 'vogter', tier: 1, kind: 'active',
     ability: 'forbinding', maxRank: 5, reqLevel: 1, requires: [],
     text: 'Binder dine sår midt i kampen.',
-    synergies: [{ id: 'haerdet', per: 0.05 }],
+    synergies: [{ id: 'haerdet', per: 0.05 }, { id: 'fodfaeste', per: 0.03 }],
   },
   {
     id: 'haerdet', name: 'Hærdet', branch: 'vogter', tier: 1, kind: 'passive',
@@ -110,8 +111,8 @@ export const NODES = [
   {
     id: 'gengaeld', name: 'Gengæld', branch: 'vogter', tier: 2, kind: 'passive',
     maxRank: 5, reqLevel: 6, requires: ['haerdet'],
-    grants: { weaponDamage: 0.03 },
-    text: 'Du slår igen, hårdere: +3% våbenskade pr. rang.',
+    grants: { weaponDamage: 0.02, maxLife: 0.015 },
+    text: 'Du slår igen, hårdere: +2% våbenskade og +1,5% liv pr. rang.',
   },
   {
     id: 'stenhud', name: 'Stenhud', branch: 'vogter', tier: 2, kind: 'active',

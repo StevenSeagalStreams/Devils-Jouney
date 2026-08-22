@@ -366,6 +366,53 @@ check('moving a skill on the bar swaps, not clones', tree.moved && tree.swapped 
 check('an untaken skill cannot go on the bar', tree.unlearned);
 check('a maxed shield still lets damage through', tree.shieldCap <= 80, `${tree.shieldCap}% reduction`);
 
+/* --------------------- balance guards --------------------- */
+const guard = await page.evaluate(() => {
+  const d = window.__dj;
+  const out = {};
+  d.forget(); d.state.level = 30;
+
+  // Lifesteal is per hit, and an area attack hits everything: without a cap
+  // one Dommedag into a crowd was a full heal.
+  d.learn('blodtorst', 5); d.learn('hug', 5); d.learn('hvirvelvind', 5); d.learn('dommedag', 5);
+  const t = d.totals();
+  d.state.hp = 1;
+  const crowd = d.monsters.filter(m => !m.dead).slice(0, 6);
+  for (const m of crowd) { m.hp = m.maxHp = 1e9; }
+  d.state.cooldowns = {}; d.state.stamina = 300;
+  for (const m of crowd) d.damageMonster(m, 20000, false);   // one swing, six targets
+  out.drunk = +((d.state.hp - 1) / t.maxHp).toFixed(3);
+  out.targets = crowd.length;
+
+  // Every rank of every skill has to buy something, or it is a trap.
+  const dead = [];
+  for (const node of d.nodes) {
+    for (let r = 1; r < node.maxRank; r++) {
+      d.forget();
+      // take the prerequisites so the node is legal, then compare rank r to r+1
+      const chain = [];
+      const walk = id => { for (const q of d.nodeById[id].requires) walk(q); chain.push(id); };
+      walk(node.id);
+      for (const id of chain) if (id !== node.id) d.learn(id, 1);
+      d.learn(node.id, r);
+      const a = node.kind === 'active'
+        ? d.abilityValue(node.id) : JSON.stringify(d.passives());
+      d.learn(node.id, r + 1);
+      const b = node.kind === 'active'
+        ? d.abilityValue(node.id) : JSON.stringify(d.passives());
+      if (String(a) === String(b)) dead.push(`${node.id} r${r}->${r + 1}`);
+    }
+  }
+  out.dead = dead;
+
+  d.forget();
+  d.state.level = 1; d.state.cooldowns = {}; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
+  return out;
+});
+check('one swing cannot drink a whole health bar', guard.drunk <= 0.13,
+  `${Math.round(guard.drunk * 100)}% of max life off ${guard.targets} targets`);
+check('every rank of every skill buys something', guard.dead.length === 0, guard.dead.join(', '));
+
 /* -------------------------------- loot -------------------------------- */
 const hilly = await page.evaluate(() => {
   const d = window.__dj;

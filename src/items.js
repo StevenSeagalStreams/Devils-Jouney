@@ -26,7 +26,9 @@ let nextId = 1;
 
 /** Rarity roll gets a little kinder as the player levels. */
 function rollRarity(level, rng, luck = 0) {
-  const r = rng() * 100 - luck - level * 0.4;
+  // + level, not −: this is meant to get a little kinder as you level, and the
+  // slope is small on purpose so legendaries stay legendary.
+  const r = rng() * 100 + luck + Math.min(2.4, level * 0.08);
   if (r > 99.2) return RARITIES[4];
   if (r > 96) return RARITIES[3];
   if (r > 89) return RARITIES[2];
