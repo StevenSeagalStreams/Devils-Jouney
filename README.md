@@ -36,6 +36,7 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | left click | swing your sword |
 | `Shift` | run |
 | `I` | open the bag |
+| `K` | open the skill tree |
 | `E` | talk to the townsfolk |
 
 Doorways need no key — walk into the mausoleum to go down, onto the stairs to come back up.
@@ -99,18 +100,46 @@ the floor before they land:
 * **Knuset** — the whole hall turns red except three blue rings. Stand in a blue
   ring or take the full hit.
 
-### Abilities
+### The skill tree
 
-Eight of them, on keys `1`–`8`, and eight is the cap. They unlock as you level —
-`Hug` at 1, then `Hvirvelvind`, `Stormløb`, `Forbinding`, `Stenhud`, `Ildstød`,
-`Kampraseri` and `Dommedag` at 15 — so there is always a next one coming. Each
-gets bigger in two ways: its own power grows past its unlock level, and the
-damaging ones are multiples of your weapon damage, which grows with gear. Hover
-a slot to see exactly what it does at your level.
+Press `K`. Three branches — **Klinge** (the sword), **Jagt** (speed, fire and
+fury) and **Vogter** (staying upright) — fifteen skills, five ranks each. You get
+one point at level 1 and one more every level to a cap of 30, so thirty points
+against a tree that costs seventy-five: you will never fill it, which is the
+point. Clicking a skill spends a point; `Nulstil` hands them all back, free, so
+trying a build costs nothing.
 
-Locked slots are greyed with the level that opens them; a running cooldown
-sweeps around the slot with the seconds left, and timed effects sit as pills
-above the bar.
+Second and third tiers want a level and a skill above them, and the faint lines
+in each column show what feeds what.
+
+Two things make a skill stronger:
+
+* **Ranks.** Rank 1 is the printed number; each rank after adds 18% of it, so
+  five ranks is about +72% on their own.
+* **Synergies.** Ranks in a *related* skill quietly feed another one, whether or
+  not you ever press it. Every point of `Skarpslebet` adds 4.5% to `Hug`; every
+  point of `Hvirvelvind` adds 6% to `Dommedag`. The tooltip lists each synergy
+  and what it is currently worth.
+
+That is what makes a finished branch worth more than thirty scattered points. At
+level 30 a committed blade build lands a `Dommedag` for about four times a
+normal monster's whole health; the same thirty points spread across everything
+land it for two. Sustained damage comes out close either way — the specialist is
+not strictly better, they just hit like a truck once a minute.
+
+The passives feed the character sheet directly: life, weapon damage, crit,
+movement and attack speed, lifesteal and regeneration. Open the bag to see the
+totals.
+
+### The ability bar
+
+Eight slots on keys `1`–`8`, and eight is the cap. Nothing is on them until you
+put it there. A skill you learn drops into the first free slot; to rearrange,
+open the tree, click a slot, then click the skill you want in it — right-click a
+slot to empty it. Passive skills never go on the bar.
+
+The rank sits in the corner of each slot, a running cooldown sweeps around it
+with the seconds left, and timed effects sit as pills above the bar.
 
 ### The town
 
@@ -138,12 +167,14 @@ src/world.js        terrain, sky, trees, lighting
 src/characters.js   hero, monster and weapon meshes (built from primitives)
 src/items.js        loot generation and canvas item icons
 src/town.js         the town: cottages, stalls, fence and the safe zone
-src/abilities.js    the eight abilities, their scaling and their icons
+src/abilities.js    what the eight abilities do, and their icons
+src/skilltree.js    the tree: nodes, ranks, synergies and the rules (no DOM)
 src/monsters.js     one table describing every creature and how it fights
 src/dungeon.js      the mausoleum above ground and the crypt below
 src/ui.js           HUD, bag, tooltips, floating numbers
 tools/shot.mjs      headless screenshot helper
 tools/playtest.mjs  headless play-through with assertions
+tools/balance.mjs   prints what four builds hit for at each level (plain node)
 ```
 
 ## Checking it still works

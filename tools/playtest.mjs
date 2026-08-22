@@ -213,31 +213,158 @@ check('loot does not drop from every kill',
 const abil = await page.evaluate(() => {
   const d = window.__dj;
   const out = { count: d.abilities.length };
-  out.locked = d.useAbility(7);
+  d.forget();
+  out.empty = d.useAbility(0);                     // nothing on the bar yet
   d.state.level = 20; d.state.hp = 50; d.state.stamina = 200;
+  d.learn('hug'); d.learn('forbinding'); d.learn('haerdet'); d.learn('stenhud');
+  d.learn('stormlob'); d.learn('ildstod'); d.learn('kampraseri');
+  out.bar = d.bar.slice(0, 7);
   const m = d.monsters[0];
   d.player.pos.set(m.pos.x, 0, m.pos.z - 2.0);
   d.player.yaw = 0;                                // facing +z, toward the creature
   const hpBefore = m.hp;
-  out.used = d.useAbility(0);
+  out.used = d.useAbility(0);                      // hug landed in slot 0
   out.damaged = hpBefore - m.hp;
   out.onCooldown = d.state.cooldowns.hug > 0;
   out.blocked = d.useAbility(0) === false;
   const healBefore = d.state.hp;
-  d.useAbility(3);
+  d.useAbility(d.bar.indexOf('forbinding'));
   out.healed = d.state.hp - healBefore;
-  d.useAbility(4); out.shield = d.state.buffs.shield > 0;
+  d.useAbility(d.bar.indexOf('stenhud')); out.shield = d.state.buffs.shield > 0;
   const dmgBefore = d.totals().damage;
-  d.useAbility(6); out.rage = d.totals().damage > dmgBefore;
+  d.useAbility(d.bar.indexOf('kampraseri')); out.rage = d.totals().damage > dmgBefore;
+  d.forget();
   d.state.level = 1; d.state.cooldowns = {}; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
   return out;
 });
 check('there are eight abilities', abil.count === 8);
-check('locked abilities cannot be used', abil.locked === false);
+check('an empty hotbar slot does nothing', abil.empty === false);
+check('learning a skill puts it on the bar', abil.bar[0] === 'hug', abil.bar.join(','));
 check('an ability damages a creature', abil.used && abil.damaged > 0, `-${abil.damaged} hp`);
 check('using one starts its cooldown', abil.onCooldown && abil.blocked);
 check('the heal ability restores life', abil.healed > 0, `+${abil.healed} hp`);
 check('the shield and rage buffs apply', abil.shield && abil.rage);
+
+/* ----------------------------- skill tree ----------------------------- */
+const tree = await page.evaluate(() => {
+  const d = window.__dj;
+  const out = {};
+  d.forget();
+
+  // one point per level, plus one to start with
+  d.state.level = 1; out.atOne = d.pointsLeft();
+  d.state.level = 10; out.atTen = d.pointsLeft();
+  d.state.level = 30; out.atThirty = d.pointsLeft();
+  d.state.level = 45; out.pastCap = d.pointsLeft();       // level is capped at 30
+
+  // level gates and prerequisites hold
+  d.state.level = 1;
+  out.tierGate = d.spendPoint('hvirvelvind') === false;   // needs level 6
+  d.state.level = 20;
+  d.forget();
+  out.prereq = d.spendPoint('dommedag') === false;        // needs Hvirvelvind
+  out.first = d.spendPoint('hug') === true;
+  out.thenTier2 = d.spendPoint('hvirvelvind') === true;
+  out.thenTier3 = d.spendPoint('dommedag') === true;
+
+  // you cannot spend more than you have
+  d.forget();
+  d.state.level = 3;                                      // 3 points
+  let spent = 0;
+  for (let i = 0; i < 20; i++) if (d.spendPoint('skarp')) spent++;
+  out.budget = spent;
+  out.overspent = d.pointsLeft() < 0;
+
+  // ranks cap out
+  d.forget(); d.state.level = 30;
+  let ranks = 0;
+  for (let i = 0; i < 20; i++) if (d.spendPoint('skarp')) ranks++;
+  out.maxRank = ranks;
+
+  // synergies: Skarpslebet quietly feeds Hug
+  d.forget(); d.state.level = 30;
+  d.learn('hug', 1);
+  const bare = d.skillPower('hug');
+  d.learn('skarp', 5);
+  out.synergy = +(d.skillPower('hug') / bare).toFixed(3);  // 1 + 5 * 0.045
+
+  // ranks scale it too
+  d.forget(); d.learn('hug', 1);
+  const r1 = d.skillPower('hug');
+  d.learn('hug', 5);
+  out.rankGain = +(d.skillPower('hug') / r1).toFixed(3);   // 1 + 4 * 0.18
+
+  // passives reach the character sheet
+  d.forget();
+  const base = d.totals();
+  d.learn('haerdet', 5); d.learn('skarp', 5); d.learn('praecision', 5); d.learn('fodfaeste', 5);
+  const buffed = d.totals();
+  out.life = +(buffed.maxHp / base.maxHp).toFixed(3);      // 1 + 5 * 0.045
+  out.dmg = +(buffed.damage / base.damage).toFixed(2);     // 1 + 5 * 0.04
+  out.crit = +(buffed.crit - base.crit).toFixed(3);        // 5 * 0.025
+  out.speed = buffed.speed > base.speed && buffed.attackSpeed > base.attackSpeed;
+
+  // Blodtørst returns life on a hit
+  d.forget(); d.learn('blodtorst', 5); d.learn('hug', 5);
+  d.state.hp = 10;
+  const m = d.monsters.find(x => !x.dead);
+  m.hp = m.maxHp = 1e9;
+  d.damageMonster(m, 1000, false);
+  out.lifesteal = d.state.hp > 10;
+
+  // a full reset hands everything back and clears the bar
+  d.state.level = 20; d.learn('hug', 3); d.learn('stormlob', 2);
+  d.resetTree();
+  out.reset = d.spent() === 0 && d.bar.every(x => x === null);
+
+  // the bar holds eight, and a skill only sits in one slot
+  d.state.level = 30;
+  for (const id of ['hug', 'hvirvelvind', 'stormlob', 'ildstod', 'forbinding', 'stenhud']) d.spendPoint(id);
+  out.barLen = d.bar.length;
+  out.noDupes = new Set(d.bar.filter(Boolean)).size === d.bar.filter(Boolean).length;
+  // moving into a slot that is already taken trades the two round
+  const wasInThree = d.bar[3];
+  d.assignBar(3, 'hug');
+  out.moved = d.bar[3] === 'hug' && d.bar.filter(x => x === 'hug').length === 1;
+  out.swapped = d.bar[0] === wasInThree;
+  // moving into an empty slot just leaves the old one empty
+  d.assignBar(7, 'hug');
+  out.toEmpty = d.bar[7] === 'hug' && d.bar[3] === null;
+
+  // a skill you have not taken cannot go on the bar
+  d.assignBar(6, 'dommedag');
+  out.unlearned = d.bar[6] !== 'dommedag';
+
+  // even a finished branch cannot make you immune
+  d.forget(); d.state.level = 30;
+  d.learn('haerdet', 5); d.learn('stenhud', 5);
+  d.state.stamina = 300; d.state.cooldowns = {};
+  d.useAbility(d.bar.indexOf('stenhud'));
+  out.shieldCap = d.state.buffPower.shield;
+
+  d.forget();
+  d.state.level = 1; d.state.cooldowns = {}; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
+  return out;
+});
+check('one point per level, one to start', tree.atOne === 1 && tree.atTen === 10, `lvl1 ${tree.atOne}, lvl10 ${tree.atTen}`);
+check('points stop at the level cap', tree.atThirty === 30 && tree.pastCap === 30);
+check('a skill below its level cannot be taken', tree.tierGate);
+check('a skill without its prerequisite cannot be taken', tree.prereq);
+check('taking the prerequisite opens the next tier', tree.first && tree.thenTier2 && tree.thenTier3);
+check('you cannot spend points you do not have', tree.budget === 3 && !tree.overspent, `spent ${tree.budget}`);
+check('ranks cap at five', tree.maxRank === 5);
+check('a synergy skill feeds its partner', Math.abs(tree.synergy - 1.225) < 0.005, `x${tree.synergy}`);
+check('ranks scale a skill', Math.abs(tree.rankGain - 1.72) < 0.005, `x${tree.rankGain}`);
+check('passive life reaches the character sheet', Math.abs(tree.life - 1.225) < 0.01, `x${tree.life}`);
+check('passive damage reaches the character sheet', tree.dmg > 1.15 && tree.dmg < 1.3, `x${tree.dmg}`);
+check('passive crit reaches the character sheet', Math.abs(tree.crit - 0.125) < 0.001, `+${tree.crit}`);
+check('passive speed reaches the character sheet', tree.speed);
+check('lifesteal returns life on a hit', tree.lifesteal);
+check('resetting hands every point back', tree.reset);
+check('the bar holds eight and never duplicates', tree.barLen === 8 && tree.noDupes);
+check('moving a skill on the bar swaps, not clones', tree.moved && tree.swapped && tree.toEmpty);
+check('an untaken skill cannot go on the bar', tree.unlearned);
+check('a maxed shield still lets damage through', tree.shieldCap <= 80, `${tree.shieldCap}% reduction`);
 
 /* -------------------------------- loot -------------------------------- */
 const hilly = await page.evaluate(() => {
@@ -390,6 +517,7 @@ const block = await page.evaluate(() => {
   const g = d.monsters.find(m => m.kindId === 'guard');
   g.maxHp = 100000; g.hp = 100000;
   d.state.level = 20; d.state.stamina = 300;
+  d.forget(); d.learn('hug');                      // slot 0 is Hug for this test
   const hit = behind => {
     const before = g.hp;
     g.yaw = 0;
@@ -400,6 +528,7 @@ const block = await page.evaluate(() => {
     return before - g.hp;
   };
   const front = hit(false), back = hit(true);
+  d.forget();
   d.state.level = 1;
   return { front, back };
 });

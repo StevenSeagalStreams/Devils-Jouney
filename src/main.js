@@ -5,7 +5,9 @@ import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
 import { KINDS, statsFor } from './monsters.js';
 import { createMausoleum, createDungeon, collideMaze, mazeBlocked, mazeLineBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
-import { ABILITIES, abilityPower, abilityScale, unlockedAt } from './abilities.js';
+import { ABILITIES, ABILITY_BY_ID, abilityPower, BAR_SLOTS } from './abilities.js';
+import { NODE_BY_ID, MAX_LEVEL, skillPower, passiveTotals, pointsLeft, canSpend,
+         sanitizeBar, autoAssign, spentPoints } from './skilltree.js';
 import { UI } from './ui.js';
 
 /* =================================================================== *
@@ -37,6 +39,9 @@ const state = {
   bag: [],
   cooldowns: {},
   buffs: { shield: 0, rage: 0 },
+  buffPower: { shield: 0, rage: 0 },   // how strong the buff was when it was cast
+  ranks: {},                           // skill tree: node id -> rank
+  bar: new Array(BAR_SLOTS).fill(null),// which skill sits in each hotbar slot
   equipped: { weapon: null, armor: null, trinket: null },
   running: false,
   dead: false,
@@ -56,14 +61,21 @@ function totals() {
     if (item.slot === 'weapon') tier = item.tier;
   }
   const lvl = state.level;
-  const rage = state.buffs.rage > 0 ? 1.6 : 1;
+  const p = passiveTotals(state.ranks);
+  const rage = state.buffs.rage > 0 ? 1 + state.buffPower.rage / 100 : 1;
   return {
-    maxHp: BASE.hp + liv + (lvl - 1) * 12,
-    damage: Math.round((BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 3) * rage),
+    maxHp: Math.round((BASE.hp + liv + (lvl - 1) * 12) * (1 + p.maxLife)),
+    damage: Math.round((BASE.damage + skade + Math.floor(styrke * 0.6) + (lvl - 1) * 3)
+      * (1 + p.weaponDamage) * rage),
     smidighed, styrke, liv, tier,
     maxStamina: BASE.stamina + smidighed * 1.5,
-    speed: BASE.speed + smidighed * 0.03,
-    attackSpeed: 1 + smidighed * 0.008,
+    speed: (BASE.speed + smidighed * 0.03) * (1 + p.moveSpeed),
+    attackSpeed: (1 + smidighed * 0.008) * (1 + p.attackSpeed),
+    crit: 0.12 + smidighed * 0.004 + p.crit,
+    lifesteal: p.lifesteal,
+    healing: p.healing,
+    regen: p.regen,
+    skillPoints: pointsLeft(lvl, state.ranks),
   };
 }
 
@@ -795,6 +807,7 @@ addEventListener('keydown', e => {
     return;
   }
   if (k === 'e') { talk(); return; }
+  if (k === 'k') { e.preventDefault(); toggleSkills(); return; }
   if (k >= '1' && k <= '8') {
     useAbility(+k - 1);
     return;
@@ -820,7 +833,7 @@ addEventListener('mousemove', e => {
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   const locked = document.pointerLockElement === canvas;
-  if (!locked && hadLock && state.running && !ui.inventoryOpen && !ui.shopOpen) pause();
+  if (!locked && hadLock && state.running && !ui.inventoryOpen && !ui.shopOpen && !ui.skillsOpen) pause();
   hadLock = locked;
 });
 
@@ -847,6 +860,43 @@ const game = {
   state,
   totals,
   useAbility,
+
+  /* ---------------- skill tree ---------------- */
+  /** Put a point in a node. Returns true if it went in. */
+  spendPoint(nodeId) {
+    const node = NODE_BY_ID[nodeId];
+    if (!node || !canSpend(node, state.level, state.ranks)) return false;
+    state.ranks[nodeId] = (state.ranks[nodeId] || 0) + 1;
+    // a skill you just learned should be ready to press
+    if (node.kind === 'active') autoAssign(state.bar, nodeId);
+    game.clampVitals();
+    ui.renderSkills();
+    ui.renderStats();
+    return true;
+  },
+  /** Take every point back. Free — this is a game about trying things out. */
+  resetTree() {
+    state.ranks = {};
+    state.bar = new Array(BAR_SLOTS).fill(null);
+    state.buffs.shield = state.buffs.rage = 0;
+    game.clampVitals();
+    ui.renderSkills();
+    ui.renderStats();
+  },
+  /** Move a skill onto the bar; swaps if the slot is taken or it sits elsewhere. */
+  assignBar(slot, nodeId) {
+    if (slot < 0 || slot >= BAR_SLOTS) return;
+    const node = NODE_BY_ID[nodeId];
+    if (!node || node.kind !== 'active' || !(state.ranks[nodeId] > 0)) return;
+    const was = state.bar.indexOf(nodeId);
+    const here = state.bar[slot];
+    state.bar[slot] = nodeId;
+    if (was >= 0 && was !== slot) state.bar[was] = here;   // straight swap
+    ui.renderSkills();
+  },
+  clearSlot(slot) {
+    if (slot >= 0 && slot < BAR_SLOTS) { state.bar[slot] = null; ui.renderSkills(); }
+  },
   /** Taking off +liv gear can leave hp above the new max until the next frame. */
   clampVitals() {
     const t = totals();
@@ -970,20 +1020,23 @@ function screenOf(v3, yOffset = 0) {
 }
 
 function gainXp(amount) {
+  if (state.level >= MAX_LEVEL) { state.xp = 0; return; }
   state.xp += amount;
   let leveled = false;
-  while (state.xp >= xpForLevel(state.level)) {
+  while (state.level < MAX_LEVEL && state.xp >= xpForLevel(state.level)) {
     state.xp -= xpForLevel(state.level);
     state.level++;
     leveled = true;
   }
+  if (state.level >= MAX_LEVEL) state.xp = 0;
   if (leveled) {
     state.hp = totals().maxHp;
     state.stamina = totals().maxStamina;
-    const fresh = ABILITIES.find(a => a.unlock === state.level);
-    ui.toast(fresh ? `Niveau ${state.level} — ny evne: ${fresh.name} (${fresh.key})` : `Niveau ${state.level}!`, 2200);
+    const left = pointsLeft(state.level, state.ranks);
+    ui.toast(`Niveau ${state.level} — ${left} evnepoint at bruge (K)`, 2400);
     ui.floatText(`Niveau ${state.level}`, screenOf(player.pos, 2.4), 'xp');
     ui.renderStats();
+    ui.renderSkills();
   }
 }
 
@@ -1002,6 +1055,12 @@ function damageMonster(m, amount, crit) {
   if (m.kind.passive) { m.angry = 12; if (m.state === 'idle') { m.state = 'chase'; m.stateT = 0; } }
   ui.floatText(blocked ? `blokeret ${amount}` : `${amount}`, screenOf(m.pos, m.kind.barY),
     blocked ? 'loot' : crit ? 'crit' : 'dmg');
+  // Blodtørst: a slice of what you dealt comes back
+  const t = totals();
+  if (t.lifesteal > 0 && !state.dead) {
+    const back = amount * t.lifesteal;
+    if (back >= 0.05) state.hp = Math.min(t.maxHp, state.hp + back);
+  }
   if (m.hp <= 0) killMonster(m);
 }
 
@@ -1083,7 +1142,7 @@ function playerAttack(dt) {
     player.hasHit = true;
     const hit = monstersInRange(player.pos, 3.0, 0.35);
     if (hit.length) {
-      const crit = Math.random() < 0.12 + t.smidighed * 0.004;
+      const crit = Math.random() < t.crit;
       const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
       for (const m of hit) damageMonster(m, Math.max(1, Math.round(raw)), crit);
     } else {
@@ -1098,7 +1157,7 @@ function hurtPlayer(amount, source = '?') {
   hurtLog.push({ amount: +amount.toFixed(1), source, t: +gameTime.toFixed(2) });
   if (hurtLog.length > 40) hurtLog.shift();
   if (inTown()) return;             // the fence is the safe line
-  if (state.buffs.shield > 0) amount *= 0.5;
+  if (state.buffs.shield > 0) amount *= 1 - state.buffPower.shield / 100;
   state.hp -= amount;
   player.hurtFlash = 0.25;
   ui.flashDamage();
@@ -1161,13 +1220,17 @@ function monstersInRange(origin, range, arc = null) {
   return out;
 }
 
-function useAbility(index) {
-  const ability = ABILITIES[index];
-  if (!ability || !state.running || state.dead) return false;
-  if (state.level < ability.unlock) {
-    ui.toast(`${ability.name} låses op på niveau ${ability.unlock}`, 1400);
+/** `slot` is a hotbar slot 0–7. What sits there comes from the skill tree. */
+function useAbility(slot) {
+  const nodeId = state.bar[slot];
+  if (!nodeId) {
+    if (state.running) ui.toast('Tom plads — vælg en evne i evnetræet (K)', 1400);
     return false;
   }
+  const node = NODE_BY_ID[nodeId];
+  const ability = ABILITY_BY_ID[node.ability];
+  const mult = skillPower(nodeId, state.ranks);
+  if (!ability || !mult || !state.running || state.dead) return false;
   if ((state.cooldowns[ability.id] || 0) > 0) return false;
   const t = totals();
   if (ability.stamina > state.stamina) {
@@ -1175,7 +1238,7 @@ function useAbility(index) {
     return false;
   }
 
-  const power = abilityPower(ability, state.level, t);
+  const power = abilityPower(ability, mult, t);
   state.stamina -= ability.stamina;
   state.cooldowns[ability.id] = ability.cooldown;
 
@@ -1219,6 +1282,7 @@ function useAbility(index) {
     }
     case 'buff': {
       state.buffs[ability.buff] = ability.duration;
+      state.buffPower[ability.buff] = power;
       ringFx(player.pos.x, player.pos.z, 2.4, ability.color, 0.5);
       ui.floatText(ability.name, screenOf(player.pos, 2.4), 'xp');
       break;
@@ -1271,11 +1335,13 @@ function updatePlayer(dt) {
     state.stamina + (sprinting ? -18 : 14) * dt, 0, t.maxStamina);
   if (sprinting) state.stamina = Math.max(0, state.stamina);
 
-  // slow health regen out of combat
+  // slow health regen out of combat — Livskraft keeps ticking mid-fight too
   if (inTown()) {
-    state.hp = Math.min(t.maxHp, state.hp + 9 * dt);
+    state.hp = Math.min(t.maxHp, state.hp + (9 + t.regen) * dt);
   } else if (!monstersInRange(player.pos, 14).length) {
-    state.hp = Math.min(t.maxHp, state.hp + 3.5 * dt);
+    state.hp = Math.min(t.maxHp, state.hp + (3.5 + t.regen) * dt);
+  } else if (t.regen > 0) {
+    state.hp = Math.min(t.maxHp, state.hp + t.regen * dt);
   }
 
   for (const npc of npcs) {
@@ -1469,6 +1535,7 @@ function start() {
   canvas.requestPointerLock?.();
 }
 function pause() {
+  if (ui.skillsOpen) { toggleSkills(); return; }
   if (ui.inventoryOpen) { ui.toggleInventory(false); return; }
   if (!state.running) return;
   state.running = false;
@@ -1491,6 +1558,11 @@ function toggleBag() {
   if (open) document.exitPointerLock?.();
   else if (state.running) canvas.requestPointerLock?.();
 }
+function toggleSkills() {
+  const open = ui.toggleSkills();
+  if (open) document.exitPointerLock?.();
+  else if (state.running) canvas.requestPointerLock?.();
+}
 function respawn() {
   state.dead = false;
   camSnap = true;
@@ -1509,9 +1581,11 @@ const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
 starter.stats = { skade: 5 };
 starter.name = 'Normal Sværd 1';
 game.equip(starter);
+state.bar = sanitizeBar(state.bar, state.ranks, BAR_SLOTS);
 state.hp = totals().maxHp;
 state.stamina = totals().maxStamina;
 ui.renderAll();
+ui.renderSkills();
 ui.setGold(state.gold);
 
 spawnOverworld();
@@ -1556,6 +1630,31 @@ window.__dj = {
   attack() { wantAttack = true; },
   useAbility,
   abilities: ABILITIES,
+  get ranks() { return state.ranks; },
+  get bar() { return state.bar; },
+  spendPoint: id => game.spendPoint(id),
+  resetTree: () => game.resetTree(),
+  assignBar: (slot, id) => game.assignBar(slot, id),
+  skillPower: id => skillPower(id, state.ranks),
+  passives: () => passiveTotals(state.ranks),
+  pointsLeft: () => pointsLeft(state.level, state.ranks),
+  spent: () => spentPoints(state.ranks),
+  /** Test hook: hand out ranks without paying for them. */
+  learn(id, rank = 1) {
+    const node = NODE_BY_ID[id];
+    if (!node) return false;
+    state.ranks[id] = Math.min(node.maxRank, rank);
+    if (node.kind === 'active') autoAssign(state.bar, id);
+    game.clampVitals();
+    ui.renderSkills();
+    return true;
+  },
+  forget() {
+    state.ranks = {};
+    state.bar = new Array(BAR_SLOTS).fill(null);
+    state.buffs.shield = state.buffs.rage = 0;
+    ui.renderSkills();
+  },
   forceAttack(kind) { const m = nearestMonster() || monsters[0]; if (m) { m.cooldown = 0; startAttack(m, kind); } },
   dropItemAt(item, x, z) { dropLoot(item, new THREE.Vector3(x, 0, z)); },
   dropAt(x, z) {

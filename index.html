@@ -78,6 +78,24 @@
       </div>
     </div>
 
+    <!-- ===== SKILL TREE ===== -->
+    <div id="skills" class="panel hidden">
+      <div class="panel-head">
+        <h2>Evner</h2>
+        <div class="head-points" id="skills-head-points">Point tilbage <b id="skill-points">0</b></div>
+        <button id="skills-reset" class="ghost">Nulstil</button>
+        <button id="skills-close" title="Luk (K)">✕</button>
+      </div>
+      <div class="panel-body skills-body">
+        <div id="skill-cols" class="skill-cols"></div>
+        <div class="skill-foot">
+          <div class="col-label">Evnebjælke <span class="dim">(tast 1–8)</span></div>
+          <div id="skill-bar" class="skill-bar"></div>
+          <div id="skill-hint" class="skill-hint"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- ===== HEALER / MERCHANT ===== -->
     <div id="shop" class="panel hidden">
       <div class="panel-head">
@@ -98,11 +116,12 @@
           <li><b>Mus</b> kig dig omkring</li>
           <li><b>Venstre klik</b> slå</li>
           <li><b>Shift</b> løb</li>
-          <li><b>1–8</b> evner · <b>I</b> taske</li>
+          <li><b>1–8</b> evner · <b>I</b> taske · <b>K</b> evnetræ</li>
           <li><b>E</b> tal med folk i byen</li>
         </ul>
         <button id="play">Spil</button>
-        <p class="hint">Byen ligger bag dig — der kan du hele dig og handle. Tryk Esc for at holde pause.</p>
+        <p class="hint">Du har et evnepoint fra start: tryk <b>K</b> og vælg din første evne.<br>
+          Byen ligger bag dig — der kan du hele dig og handle. Tryk Esc for at holde pause.</p>
       </div>
     </div>
 

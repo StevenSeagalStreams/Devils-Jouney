@@ -1,5 +1,7 @@
 import { drawItemIcon, statLines, itemScore, STAT_LABEL } from './items.js';
-import { ABILITIES, abilityPower, drawAbilityIcon } from './abilities.js';
+import { ABILITIES, ABILITY_BY_ID, abilityPower, drawAbilityIcon, drawPassiveIcon, BAR_SLOTS } from './abilities.js';
+import { BRANCHES, NODES, NODE_BY_ID, blockedReason, describe, skillPower,
+         synergyMultiplier, rankMultiplier, pointsLeft, spentPoints, passiveTotals } from './skilltree.js';
 
 const $ = sel => document.querySelector(sel);
 
@@ -24,61 +26,101 @@ export class UI {
     $('#shop-close').addEventListener('click', () => this.closeShop());
     this.buildHotbar();
     this.bindPanel();
+    this.buildSkills();
   }
 
   /* ---------------- ability bar ---------------- */
+  /** Eight slots. What sits in each one is the player's choice, made in the
+      skill tree, so the bar is drawn from state.bar rather than a fixed list. */
   buildHotbar() {
     this.hotbar.innerHTML = '';
-    this.abilitySlots = ABILITIES.map((ability, i) => {
+    this.abilitySlots = [];
+    for (let i = 0; i < BAR_SLOTS; i++) {
       const el = document.createElement('div');
-      el.className = 'slot ability';
+      el.className = 'slot ability empty';
       el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas>
         <div class="cd"><span></span></div>
-        <div class="lock"></div>
-        <span class="key">${ability.key}</span>`;
+        <div class="rank"></div>
+        <span class="key">${i + 1}</span>`;
       el.addEventListener('click', () => this.game.useAbility(i));
       el.addEventListener('mousemove', e => {
         if (document.pointerLockElement) { this.tooltip.style.display = 'none'; return; }
-        this.showAbilityTip(ability, e.clientX, e.clientY);
+        const id = this.game.state.bar[i];
+        if (id) this.showAbilityTip(id, e.clientX, e.clientY);
+        else this.tooltip.style.display = 'none';
       });
       el.addEventListener('mouseleave', () => { this.tooltip.style.display = 'none'; });
       this.hotbar.appendChild(el);
-      return el;
-    });
-    this.abilityUnlocked = new Array(ABILITIES.length).fill(null);
+      this.abilitySlots.push(el);
+    }
+    this.barDrawn = new Array(BAR_SLOTS).fill(undefined);
     const eq = $('#equipped-slot');
     eq.querySelector('.key')?.remove();
     this.attachTip(eq, () => this.game.state.equipped.weapon);
   }
 
-  showAbilityTip(ability, x, y) {
+  /** One tooltip body for a skill, used by the bar and by the tree. */
+  skillTipHtml(nodeId) {
     const s = this.game.state;
-    const locked = s.level < ability.unlock;
-    const power = abilityPower(ability, s.level, this.game.totals());
-    this.tooltip.innerHTML = `
-      <div class="tt-name" style="color:${locked ? '#8a8a8a' : ability.color}">${ability.name}</div>
-      <div class="tt-type">Evne · tast ${ability.key}</div>
-      <div class="tt-stat">${locked ? `Låses op på niveau ${ability.unlock}` : ability.text(power)}</div>
-      <div class="tt-cmp">${ability.stamina ? `${ability.stamina} udholdenhed · ` : ''}${ability.cooldown}s pause</div>`;
+    const node = NODE_BY_ID[nodeId];
+    const rank = s.ranks[nodeId] || 0;
+    const branch = BRANCHES.find(b => b.id === node.branch);
+    const head = `
+      <div class="tt-name" style="color:${rank ? branch.color : '#8a8a8a'}">${node.name}</div>
+      <div class="tt-type">${branch.name} · ${node.kind === 'active' ? 'evne' : 'passiv'} · rang ${rank}/${node.maxRank}</div>`;
+    const lines = describe(node, s.ranks, s.level).map(l => `<div class="tt-stat">${l}</div>`).join('');
+    let foot = '';
+    if (node.kind === 'active') {
+      const ability = ABILITY_BY_ID[node.ability];
+      const mult = skillPower(nodeId, s.ranks) || rankMultiplier(1) * synergyMultiplier(node, s.ranks);
+      const power = abilityPower(ability, mult, this.game.totals());
+      foot = `<div class="tt-stat">${ability.text(power)}</div>
+        <div class="tt-cmp">${ability.stamina ? `${ability.stamina} udholdenhed · ` : ''}${ability.cooldown}s pause</div>`;
+    }
+    const why = blockedReason(node, s.level, s.ranks);
+    if (why) foot += `<div class="tt-cmp bad">${why}</div>`;
+    return head + lines + foot;
+  }
+
+  showAbilityTip(nodeId, x, y) {
+    this.tooltip.innerHTML = this.skillTipHtml(nodeId);
+    this.placeTip(x, y);
+  }
+
+  placeTip(x, y) {
     this.tooltip.style.display = 'block';
     const r = this.tooltip.getBoundingClientRect();
     this.tooltip.style.left = Math.min(x + 16, window.innerWidth - r.width - 8) + 'px';
     this.tooltip.style.top = Math.max(8, y - r.height - 12) + 'px';
   }
 
-  /** Cheap per-frame pass: icons are only redrawn when something unlocks. */
+  /** Cheap per-frame pass: icons are only redrawn when the bar changes. */
   renderAbilities() {
     const s = this.game.state;
-    ABILITIES.forEach((ability, i) => {
+    for (let i = 0; i < BAR_SLOTS; i++) {
       const el = this.abilitySlots[i];
-      const locked = s.level < ability.unlock;
-      if (this.abilityUnlocked[i] !== !locked) {
-        this.abilityUnlocked[i] = !locked;
-        drawAbilityIcon(el.querySelector('canvas'), ability, locked);
-        el.classList.toggle('locked', locked);
-        el.style.setProperty('--rare', locked ? '#333' : ability.color);
-        el.querySelector('.lock').textContent = locked ? ability.unlock : '';
+      const nodeId = s.bar[i];
+      const node = nodeId ? NODE_BY_ID[nodeId] : null;
+      const rank = nodeId ? (s.ranks[nodeId] || 0) : 0;
+      const stamp = nodeId ? `${nodeId}:${rank}` : '';
+      if (this.barDrawn[i] !== stamp) {
+        this.barDrawn[i] = stamp;
+        const canvas = el.querySelector('canvas');
+        if (node) {
+          const ability = ABILITY_BY_ID[node.ability];
+          drawAbilityIcon(canvas, ability, false);
+          el.classList.remove('empty');
+          el.style.setProperty('--rare', ability.color);
+          el.querySelector('.rank').textContent = rank;
+        } else {
+          canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+          el.classList.add('empty');
+          el.style.setProperty('--rare', '#333');
+          el.querySelector('.rank').textContent = '';
+        }
       }
+      if (!node) continue;
+      const ability = ABILITY_BY_ID[node.ability];
       const cd = s.cooldowns[ability.id] || 0;
       const wedge = el.querySelector('.cd');
       if (cd > 0) {
@@ -90,7 +132,7 @@ export class UI {
       } else if (wedge.style.display !== 'none') {
         wedge.style.display = 'none';
       }
-    });
+    }
   }
 
   /** Small pills for timed effects, above the dock. */
@@ -161,8 +203,186 @@ export class UI {
     }
   }
 
+  /* ---------------- skill tree ---------------- */
+  buildSkills() {
+    this.skills = $('#skills');
+    this.pickedSlot = -1;                  // bar slot waiting for a skill
+    $('#skills-close').addEventListener('click', () => this.toggleSkills(false));
+    $('#skills-reset').addEventListener('click', () => {
+      if (!spentPoints(this.game.state.ranks)) return;
+      this.game.resetTree();
+      this.toast('Alle evnepoint er givet tilbage', 1600);
+    });
+
+    // three columns, one per branch, nodes stacked by tier
+    const cols = $('#skill-cols');
+    cols.innerHTML = '';
+    this.nodeEls = {};
+    this.skillCols = [];
+    for (const branch of BRANCHES) {
+      const col = document.createElement('div');
+      col.className = 'skill-col';
+      col.style.setProperty('--c', branch.color);
+      col.innerHTML = `<svg class="skill-links"></svg>
+        <div class="skill-branch"><b>${branch.name}</b><span>${branch.blurb}</span></div>`;
+      for (const tier of [1, 2, 3]) {
+        const row = document.createElement('div');
+        row.className = 'skill-row';
+        for (const node of NODES.filter(n => n.branch === branch.id && n.tier === tier)) {
+          const el = document.createElement('div');
+          el.className = 'skill-node';
+          el.innerHTML = `<div class="sn-icon"><canvas width="96" height="96"></canvas>
+              <div class="sn-rank"><b>0</b>/${node.maxRank}</div></div>
+            <div class="sn-name">${node.name}</div>
+            <div class="sn-pips">${'<i></i>'.repeat(node.maxRank)}</div>`;
+          el.addEventListener('click', () => this.clickNode(node));
+          el.addEventListener('mousemove', e => {
+            this.tooltip.innerHTML = this.skillTipHtml(node.id);
+            this.placeTip(e.clientX, e.clientY);
+          });
+          el.addEventListener('mouseleave', () => { this.tooltip.style.display = 'none'; });
+          row.appendChild(el);
+          this.nodeEls[node.id] = el;
+        }
+        col.appendChild(row);
+      }
+      cols.appendChild(col);
+      this.skillCols.push(col);
+    }
+
+    // the eight slots, mirrored from the hotbar
+    const bar = $('#skill-bar');
+    bar.innerHTML = '';
+    this.skillBarEls = [];
+    for (let i = 0; i < BAR_SLOTS; i++) {
+      const el = document.createElement('div');
+      el.className = 'slot ability empty';
+      el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas>
+        <span class="key">${i + 1}</span>`;
+      el.addEventListener('click', () => {
+        this.pickedSlot = this.pickedSlot === i ? -1 : i;
+        this.renderSkills();
+      });
+      el.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        this.game.clearSlot(i);
+      });
+      bar.appendChild(el);
+      this.skillBarEls.push(el);
+    }
+    this.skillBarDrawn = new Array(BAR_SLOTS).fill(undefined);
+    this.renderSkills();
+  }
+
+  /** A click on a node either assigns it to a waiting slot, or spends a point. */
+  clickNode(node) {
+    const s = this.game.state;
+    if (this.pickedSlot >= 0 && node.kind === 'active' && s.ranks[node.id] > 0) {
+      this.game.assignBar(this.pickedSlot, node.id);
+      this.pickedSlot = -1;
+      this.renderSkills();
+      return;
+    }
+    const why = blockedReason(node, s.level, s.ranks);
+    if (why) { this.toast(why, 1400); return; }
+    this.game.spendPoint(node.id);
+  }
+
+  /** Faint lines from a skill to the ones it needs. Only measurable once the
+      panel is on screen, so it is redrawn every time the panel opens. */
+  drawSkillLinks() {
+    for (const col of this.skillCols) {
+      const svg = col.querySelector('.skill-links');
+      const base = col.getBoundingClientRect();
+      if (!base.width) return;                       // panel is hidden
+      svg.setAttribute('viewBox', `0 0 ${base.width} ${base.height}`);
+      svg.setAttribute('width', base.width);
+      svg.setAttribute('height', base.height);
+      const parts = [];
+      for (const node of NODES) {
+        if (!this.nodeEls[node.id] || !node.requires.length) continue;
+        const to = this.nodeEls[node.id].querySelector('.sn-icon').getBoundingClientRect();
+        for (const req of node.requires) {
+          const from = this.nodeEls[req]?.querySelector('.sn-icon').getBoundingClientRect();
+          if (!from) continue;
+          const lit = (this.game.state.ranks[req] || 0) > 0 ? ' class="on"' : '';
+          parts.push(`<line${lit} x1="${from.x + from.width / 2 - base.x}" y1="${from.bottom - base.y}"`
+            + ` x2="${to.x + to.width / 2 - base.x}" y2="${to.y - base.y}" />`);
+        }
+      }
+      svg.innerHTML = parts.join('');
+    }
+  }
+
+  renderSkills() {
+    if (!this.nodeEls) return;
+    const s = this.game.state;
+    const left = pointsLeft(s.level, s.ranks);
+    $('#skill-points').textContent = left;
+    $('#skills-head-points').classList.toggle('has', left > 0);
+    $('#skills-reset').disabled = !spentPoints(s.ranks);
+
+    for (const node of NODES) {
+      const el = this.nodeEls[node.id];
+      const rank = s.ranks[node.id] || 0;
+      const why = blockedReason(node, s.level, s.ranks);
+      const reachable = !why || why === 'Ingen point tilbage' || why === 'Maks rang';
+      const branch = BRANCHES.find(b => b.id === node.branch);
+      const stamp = `${rank}:${reachable}`;
+      if (el.dataset.stamp !== stamp) {
+        el.dataset.stamp = stamp;
+        const canvas = el.querySelector('canvas');
+        const dim = !rank && !reachable;
+        if (node.kind === 'active') drawAbilityIcon(canvas, ABILITY_BY_ID[node.ability], dim);
+        else drawPassiveIcon(canvas, node.id, branch.color, dim);
+      }
+      el.classList.toggle('locked', !rank && !reachable);
+      el.classList.toggle('taken', rank > 0);
+      el.classList.toggle('ready', !why && left > 0);
+      el.classList.toggle('maxed', rank >= node.maxRank);
+      el.querySelector('.sn-rank b').textContent = rank;
+      el.querySelectorAll('.sn-pips i').forEach((pip, i) => pip.classList.toggle('on', i < rank));
+    }
+
+    for (let i = 0; i < BAR_SLOTS; i++) {
+      const el = this.skillBarEls[i];
+      const id = s.bar[i];
+      const node = id ? NODE_BY_ID[id] : null;
+      el.classList.toggle('picked', this.pickedSlot === i);
+      if (this.skillBarDrawn[i] === id) continue;
+      this.skillBarDrawn[i] = id;
+      const canvas = el.querySelector('canvas');
+      if (node) {
+        drawAbilityIcon(canvas, ABILITY_BY_ID[node.ability], false);
+        el.classList.remove('empty');
+        el.style.setProperty('--rare', ABILITY_BY_ID[node.ability].color);
+      } else {
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        el.classList.add('empty');
+        el.style.setProperty('--rare', '#333');
+      }
+    }
+    this.drawSkillLinks();
+    $('#skill-hint').textContent = this.pickedSlot >= 0
+      ? `Plads ${this.pickedSlot + 1} valgt — klik på en evne for at lægge den der.`
+      : 'Klik på en evne for at bruge et point. Klik på en plads herunder og så på en evne for at flytte den. Højreklik på en plads for at tømme den.';
+  }
+
+  toggleSkills(force) {
+    const open = force ?? this.skills.classList.contains('hidden');
+    if (open) this.inventory.classList.add('hidden');   // one panel at a time
+    this.skills.classList.toggle('hidden', !open);
+    this.tooltip.style.display = 'none';
+    this.pickedSlot = -1;
+    if (open) this.renderSkills();
+    return open;
+  }
+
+  get skillsOpen() { return !this.skills.classList.contains('hidden'); }
+
   toggleInventory(force) {
     const open = force ?? this.inventory.classList.contains('hidden');
+    if (open) this.skills?.classList.add('hidden');
     this.inventory.classList.toggle('hidden', !open);
     this.tooltip.style.display = 'none';
     if (open) this.renderBag();
@@ -234,7 +454,9 @@ export class UI {
       <div>Liv <b>${Math.ceil(s.hp)} / ${t.maxHp}</b></div>
       <div>${STAT_LABEL.skade} <b>${t.damage}</b></div>
       <div>${STAT_LABEL.smidighed} <b>${t.smidighed}</b></div>
-      <div>${STAT_LABEL.styrke} <b>${t.styrke}</b></div>`;
+      <div>${STAT_LABEL.styrke} <b>${t.styrke}</b></div>
+      <div>Kritisk <b>${Math.round(t.crit * 100)}%</b></div>
+      <div>Evnepoint <b>${t.skillPoints}</b></div>`;
   }
 
   setBars(hpPct, staPct, xpPct, level) {
