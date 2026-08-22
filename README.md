@@ -42,6 +42,11 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | `E` | talk to the townsfolk |
 
 Doorways need no key — walk into the mausoleum to go down, onto the stairs to come back up.
+
+Solid things are solid: tree trunks, cottages, the well, the market counters and
+the mausoleum walls all stop you, and stop the creatures too, so nothing can be
+shoved through a wall. The mausoleum's doorway is the gap in its front wall —
+that one you walk straight into.
 | `1`–`8` | use an ability |
 | `Esc` | pause |
 
@@ -91,32 +96,32 @@ Three kinds of thing live in it, and each wants to be fought differently:
 Every wind-up draws a ring on the floor that grows out to that blow's reach and
 lands when the ring stops, so the fight is about reading and reacting.
 
-### The Gravherre
+### The Grave Lord
 
 Deep in the maze is a hall with a boss in it. He has three moves, all painted on
 the floor before they land:
 
-* **Pisken** — his bread and butter: a lane of floor in front of him. It follows
+* **The whip** — his bread and butter: a lane of floor in front of him. It follows
   him while he winds up, then commits, and that gap is when you step off it.
-* **Stormløbet** — he marks a long lane, then runs down it. Get out of the lane.
-* **Knuset** — the whole hall turns red except three blue rings. Stand in a blue
+* **The charge** — he marks a long lane, then runs down it. Get out of the lane.
+* **The slam** — the whole hall turns red except three blue rings. Stand in a blue
   ring or take the full hit.
 
 ### The skill tree
 
-Press `K`. Three branches — **Klinge** (the sword), **Jagt** (speed, fire and
-fury) and **Vogter** (staying upright) — fifteen skills, five ranks each. You get
+Press `K`. Three branches — **Blade** (the sword), **Hunt** (speed, fire and
+fury) and **Warden** (staying upright) — fifteen skills, five ranks each. You get
 one point at level 1 and one more every level to a cap of 30, so thirty points
 against a tree that costs seventy-five: you will never fill it, which is the
-point. Clicking a skill spends a point; `Nulstil` hands them all back, free, so
+point. Clicking a skill spends a point; `Reset` hands them all back, free, so
 trying a build costs nothing.
 
 Second and third tiers want a level and a skill above them, and the lines in each
 column show what feeds what — dashed until you take the skill they hang off, then
 solid and lit.
 
-Each node says whether it is an **evne** (an active skill you press, which goes on
-the bar) or a **passiv** (which just works). Hover any of them: the tooltip shows
+Each node is marked **active** (a skill you press, which goes on the bar) or
+**passive** (which just works). Hover any of them: the tooltip shows
 what it does at your rank, what it will do at the next one, which skills are
 feeding it and by how much, and — the part that is otherwise invisible — which
 other skills *it* is feeding.
@@ -126,12 +131,12 @@ Two things make a skill stronger:
 * **Ranks.** Rank 1 is the printed number; each rank after adds 18% of it, so
   five ranks is about +72% on their own.
 * **Synergies.** Ranks in a *related* skill quietly feed another one, whether or
-  not you ever press it. Every point of `Skarpslebet` adds 4.5% to `Hug`; every
-  point of `Hvirvelvind` adds 6% to `Dommedag`. The tooltip lists each synergy
+  not you ever press it. Every point of `Honed Edge` adds 5% to `Cleave`; every
+  point of `Whirlwind` adds 6% to `Doomfall`. The tooltip lists each synergy
   and what it is currently worth.
 
 That is what makes a finished branch worth more than thirty scattered points. At
-level 30 a committed blade build lands a `Dommedag` for about three times a
+level 30 a committed Blade build lands a `Doomfall` for about three times a
 normal monster's whole health; the same thirty points spread across everything
 land it for two. Time to kill the crypt boss comes out close either way — 4.7s
 against 4.8s — so the specialist is not strictly better, they just hit much
@@ -144,7 +149,7 @@ its whole rotation off — except at the very top, with a finished branch and a
 legendary weapon, where it drops in 2.2 seconds. That is the one place the game
 is meant to feel unfair, and you have to earn it.
 
-Your own `Stormløb` works the same way as his: it sweeps the six metres rather
+Your own `Charge` works the same way as his: it sweeps the six metres rather
 than jumping them, so it stops at a wall and catches everything you run through
 instead of only what is standing where you land.
 
@@ -191,6 +196,7 @@ of frame.
 index.html          markup + HUD
 src/main.js         game loop, input, combat, camera
 src/world.js        terrain, sky, trees, lighting
+src/collide.js      the solid things you cannot walk through
 src/characters.js   hero, monster and weapon meshes (built from primitives)
 src/items.js        loot generation and canvas item icons
 src/town.js         the town: cottages, stalls, fence and the safe zone

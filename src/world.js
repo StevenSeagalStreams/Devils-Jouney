@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { circle } from './collide.js';
 
 /* ------------------------------------------------------------------ *
  *  Deterministic value noise -> gentle rolling hills like the concept  *
@@ -260,7 +261,7 @@ export function createWorld(scene) {
 
   // props
   const props = new THREE.Group();
-  const treeSpots = [];
+  const solids = [];
   for (let i = 0; i < 95; i++) {
     const a = rng() * Math.PI * 2;
     const r = 24 + rng() * 150;
@@ -272,7 +273,7 @@ export function createWorld(scene) {
     t.scale.setScalar(s);
     t.rotation.y = rng() * Math.PI * 2;
     props.add(t);
-    treeSpots.push({ x, z, r: 0.7 * s });
+    solids.push(circle(x, z, 0.42 * s));         // the trunk, not the canopy
   }
   for (let i = 0; i < 60; i++) {
     const a = rng() * Math.PI * 2;
@@ -282,13 +283,14 @@ export function createWorld(scene) {
     const rock = makeRock(rng);
     rock.position.set(x, heightAt(x, z) + 0.1, z);
     props.add(rock);
+    // the rocks are ankle-high pebbles — you step over those, not around them
   }
   root.add(props);
 
   return {
     root,
     sun,
-    obstacles: treeSpots,
+    solids,
     update(dt) { clouds.userData.animate(dt); },
     followSun(target) {
       sun.position.set(target.x + 34, 96, target.z + 22);

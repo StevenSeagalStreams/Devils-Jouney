@@ -2,24 +2,24 @@
    numbers so a new player can compare two swords at a glance. */
 
 export const RARITIES = [
-  { key: 'normal', name: 'Normal', color: '#b9b9b9', mult: 1.0, statCount: 1 },
-  { key: 'fin', name: 'Fin', color: '#5fd35f', mult: 1.2, statCount: 2 },
-  { key: 'sjaelden', name: 'Sjælden', color: '#4aa8ff', mult: 1.45, statCount: 2 },
-  { key: 'episk', name: 'Episk', color: '#b569ff', mult: 1.75, statCount: 3 },
-  { key: 'legendarisk', name: 'Legendarisk', color: '#ffa32e', mult: 2.1, statCount: 3 },
+  { key: 'normal', name: 'Plain', color: '#b9b9b9', mult: 1.0, statCount: 1 },
+  { key: 'fin', name: 'Fine', color: '#5fd35f', mult: 1.2, statCount: 2 },
+  { key: 'sjaelden', name: 'Rare', color: '#4aa8ff', mult: 1.45, statCount: 2 },
+  { key: 'episk', name: 'Epic', color: '#b569ff', mult: 1.75, statCount: 3 },
+  { key: 'legendarisk', name: 'Legendary', color: '#ffa32e', mult: 2.1, statCount: 3 },
 ];
 
 export const TYPES = {
-  weapon: { name: 'Sværd', slot: 'weapon', main: 'skade', base: 5 },
-  armor: { name: 'Rustning', slot: 'armor', main: 'liv', base: 7 },
+  weapon: { name: 'Sword', slot: 'weapon', main: 'skade', base: 5 },
+  armor: { name: 'Armour', slot: 'armor', main: 'liv', base: 7 },
   trinket: { name: 'Amulet', slot: 'trinket', main: 'smidighed', base: 3 },
 };
 
 export const STAT_LABEL = {
-  skade: 'skade',
-  liv: 'liv',
-  smidighed: 'smidighed',
-  styrke: 'styrke',
+  skade: 'damage',
+  liv: 'life',
+  smidighed: 'agility',
+  styrke: 'strength',
 };
 
 let nextId = 1;

@@ -350,7 +350,8 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   background:#0d0d0d;border:1px solid #3a3a3a;font-size:10.5px;color:#8d887c;line-height:14px;
 }
 .skill-node .sn-rank b{color:#d8d2c2}
-.skill-node .sn-name{font-size:12.5px;margin-top:9px;color:#b9b4a6;line-height:1.15}
+.skill-node .sn-name{font-size:12.5px;margin-top:9px;color:#b9b4a6;line-height:1.15;
+  min-height:2.3em;display:flex;align-items:center;justify-content:center}
 .skill-node .sn-pips{display:flex;gap:3px;justify-content:center;margin-top:4px}
 .skill-node .sn-pips i{width:7px;height:7px;border-radius:50%;background:#2c2c2c;border:1px solid #3a3a3a}
 .skill-node .sn-pips i.on{background:#ffd473;border-color:#8a6210}

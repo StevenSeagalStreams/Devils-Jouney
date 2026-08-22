@@ -625,6 +625,35 @@ const inside = await page.evaluate(() => {
   const d = window.__dj;
   return { zone: d.zone, kinds: [...new Set(d.monsters.map(m => m.kindId))].sort() };
 });
+/* --------------------------- solid ground --------------------------- */
+const solid = await page.evaluate(() => {
+  const d = window.__dj;
+  const S = d.solids;
+  // march the hero into every collider from eight directions, straight through
+  // the middle, and see whether any step ends up inside something
+  let steps = 0, inside = 0, sample = null;
+  for (const c of S.all) {
+    const reach = c.r !== undefined ? c.r : Math.hypot(c.hw, c.hd);
+    for (let a = 0; a < 8; a++) {
+      const ang = a / 8 * Math.PI * 2;
+      let x = c.x + Math.cos(ang) * (reach + 5), z = c.z + Math.sin(ang) * (reach + 5);
+      for (let i = 0; i < 60; i++) {
+        x -= Math.cos(ang) * 0.18; z -= Math.sin(ang) * 0.18;
+        const p = { x, y: 0, z };
+        S.resolve(p, 0.45);
+        x = p.x; z = p.z;
+        steps++;
+        if (S.blocked(x, z, 0.40)) { inside++; sample = sample || [+x.toFixed(1), +z.toFixed(1)]; }
+      }
+    }
+  }
+  return { count: S.all.length, steps, inside, sample };
+});
+check('you cannot walk into a tree, a cottage or a wall',
+  solid.inside === 0 && solid.count > 50,
+  `${solid.count} solid things, ${solid.steps} steps, ${solid.inside} ended inside`
+    + (solid.sample ? ` (e.g. ${solid.sample})` : ''));
+
 check('walking into the mausoleum takes you down',
   beforeDoor === 'overworld' && inside.zone === 'dungeon', `${beforeDoor} -> ${inside.zone}`);
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="da">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
@@ -40,7 +40,7 @@
         <div class="dock-item" id="dock-item">
           <div class="slot slot-big" id="equipped-slot"><canvas class="icon" width="96" height="96"></canvas></div>
           <div class="dock-text">
-            <div class="item-name" id="equipped-name">Normal Sværd 1</div>
+            <div class="item-name" id="equipped-name">Plain Sword 1</div>
             <div class="item-stats" id="equipped-stats"></div>
           </div>
         </div>
@@ -48,7 +48,7 @@
           <div class="buffs" id="buffs"></div>
           <div class="hotbar" id="hotbar"></div>
           <div class="xp-row">
-            <div class="skill-nudge hidden" id="skill-nudge"><b id="nudge-count">1</b> evnepoint · <b>K</b></div>
+            <div class="skill-nudge hidden" id="skill-nudge"><b id="nudge-count">1</b> skill points · <b>K</b></div>
             <div class="xp-bar"><div class="fill" id="xp-fill"></div></div>
             <div class="level" id="level-label">1</div>
           </div>
@@ -59,21 +59,21 @@
     <!-- ===== INVENTORY ===== -->
     <div id="inventory" class="panel hidden">
       <div class="panel-head">
-        <h2>Taske</h2>
-        <button id="inv-close" title="Luk (I)">✕</button>
+        <h2>Bag</h2>
+        <button id="inv-close" title="Close (I)">✕</button>
       </div>
       <div class="panel-body">
         <div class="equip-col">
-          <div class="col-label">Udstyr</div>
+          <div class="col-label">Equipment</div>
           <div class="equip-slots">
-            <div class="slot equip" data-equip="weapon"><span class="ph">Våben</span></div>
-            <div class="slot equip" data-equip="armor"><span class="ph">Rustning</span></div>
+            <div class="slot equip" data-equip="weapon"><span class="ph">Weapon</span></div>
+            <div class="slot equip" data-equip="armor"><span class="ph">Armour</span></div>
             <div class="slot equip" data-equip="trinket"><span class="ph">Amulet</span></div>
           </div>
           <div class="stat-block" id="stat-block"></div>
         </div>
         <div class="bag-col">
-          <div class="col-label">Ting <span class="dim">(klik for at tage på · højreklik for at smide ud)</span></div>
+          <div class="col-label">Things <span class="dim">(click to wear · right-click to throw away)</span></div>
           <div class="bag" id="bag"></div>
         </div>
       </div>
@@ -82,15 +82,15 @@
     <!-- ===== SKILL TREE ===== -->
     <div id="skills" class="panel hidden">
       <div class="panel-head">
-        <h2>Evnetræ</h2>
-        <div class="head-points" id="skills-head-points">Evnepoint tilbage <b id="skill-points">0</b></div>
-        <button id="skills-reset" class="ghost">Nulstil</button>
-        <button id="skills-close" title="Luk (K)">✕</button>
+        <h2>Skill Tree</h2>
+        <div class="head-points" id="skills-head-points">Skill points left <b id="skill-points">0</b></div>
+        <button id="skills-reset" class="ghost">Reset</button>
+        <button id="skills-close" title="Close (K)">✕</button>
       </div>
       <div class="panel-body skills-body">
         <div id="skill-cols" class="skill-cols"></div>
         <div class="skill-foot">
-          <div class="col-label">Evnebjælke <span class="dim">(tasterne 1–8)</span></div>
+          <div class="col-label">Skill bar <span class="dim">(keys 1–8)</span></div>
           <div id="skill-bar" class="skill-bar"></div>
           <div id="skill-hint" class="skill-hint"></div>
         </div>
@@ -100,9 +100,9 @@
     <!-- ===== HEALER / MERCHANT ===== -->
     <div id="shop" class="panel hidden">
       <div class="panel-head">
-        <h2 id="shop-title">Handelsmand</h2>
+        <h2 id="shop-title">Merchant</h2>
         <div class="purse purse-inline"><span class="coin"></span><span id="shop-gold">0</span></div>
-        <button id="shop-close" title="Luk (Esc)">✕</button>
+        <button id="shop-close" title="Close (Esc)">✕</button>
       </div>
       <div class="panel-body" id="shop-body"></div>
     </div>
@@ -111,26 +111,26 @@
     <div id="start" class="overlay">
       <div class="start-card">
         <h1>Devil's Journey</h1>
-        <p class="tag">Slå monstre ihjel. Bliv stærkere. Find bedre grej.</p>
+        <p class="tag">Kill monsters. Get stronger. Find better gear.</p>
         <ul class="keys">
-          <li><b>W A S D</b> gå</li>
-          <li><b>Mus</b> kig dig omkring</li>
-          <li><b>Venstre klik</b> slå</li>
-          <li><b>Shift</b> løb</li>
-          <li class="wide"><b>1–8</b> evner · <b>I</b> taske · <b>K</b> evnetræ</li>
-          <li><b>E</b> tal med folk i byen</li>
+          <li><b>W A S D</b> walk</li>
+          <li><b>Mouse</b> look around</li>
+          <li><b>Left click</b> swing</li>
+          <li><b>Shift</b> run</li>
+          <li class="wide"><b>1–8</b> skills · <b>I</b> bag · <b>K</b> skill tree</li>
+          <li><b>E</b> talk to people in town</li>
         </ul>
-        <p class="lead">Du har ét evnepoint fra start — tryk <b>K</b> og vælg din første evne.</p>
-        <button id="play">Spil</button>
-        <p class="hint">Byen ligger bag dig — der kan du hele dig og handle. Tryk Esc for at holde pause.</p>
+        <p class="lead">You start with one skill point — press <b>K</b> and pick your first skill.</p>
+        <button id="play">Play</button>
+        <p class="hint">The town is behind you — you can heal and trade there. Press Esc to pause.</p>
       </div>
     </div>
 
     <div id="death" class="overlay hidden">
       <div class="start-card">
-        <h1 class="dead">Du døde</h1>
-        <p class="tag">Monsteret var stærkere denne gang.</p>
-        <button id="respawn">Prøv igen</button>
+        <h1 class="dead">You died</h1>
+        <p class="tag">The monster was stronger this time.</p>
+        <button id="respawn">Try again</button>
       </div>
     </div>
   </div>

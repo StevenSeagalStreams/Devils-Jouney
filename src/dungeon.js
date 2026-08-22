@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { heightAt } from './world.js';
+import { boxAt } from './collide.js';
 
 /* The mausoleum stands out in the meadow; below it is a maze of corridors that
    you have to actually explore. The layout is generated from a fixed seed, so
@@ -110,7 +111,17 @@ export function createMausoleum() {
 
   // step through this and you are underground — no key press
   const door = new THREE.Vector3(MAUSOLEUM.x, 0, MAUSOLEUM.z - 3.0);
-  return { group: g, door };
+  // The walls are solid; the gap between the two front pieces is the doorway,
+  // and stepping into it takes you down before you can reach anything behind.
+  const M = MAUSOLEUM;
+  const solids = [
+    boxAt(M.x, M.z + 3.1, 7.4 / 2, 0.6 / 2),
+    boxAt(M.x - 3.4, M.z, 0.6 / 2, 6.2 / 2),
+    boxAt(M.x + 3.4, M.z, 0.6 / 2, 6.2 / 2),
+    boxAt(M.x - 2.45, M.z - 3.1, 2.5 / 2, 0.6 / 2),
+    boxAt(M.x + 2.45, M.z - 3.1, 2.5 / 2, 0.6 / 2),
+  ];
+  return { group: g, door, solids };
 }
 
 /* ------------------------------ the maze ------------------------------ */

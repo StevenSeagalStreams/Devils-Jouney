@@ -6,7 +6,7 @@ import { createMonsterModel, createBoarModel, createArcherModel, createGuardMode
 
 export const KINDS = {
   boar: {
-    id: 'boar', loot: 0.18, name: 'Vildsvin', model: () => createBoarModel(),
+    id: 'boar', loot: 0.18, name: 'Boar', model: () => createBoarModel(),
     passive: true,                       // never starts a fight
     hp: 0.8, damage: 0.6, speed: 3.0, scale: 1.0, xp: 0.5, gold: 0.5,
     sight: 9, leash: 22, barY: 1.25,
@@ -17,7 +17,7 @@ export const KINDS = {
     choose: () => 'stang',
   },
   brute: {
-    id: 'brute', loot: 0.3, name: 'Skovtrold', model: lvl => createMonsterModel((lvl - 1) % 3),
+    id: 'brute', loot: 0.3, name: 'Forest Troll', model: lvl => createMonsterModel((lvl - 1) % 3),
     hp: 1, damage: 1, speed: 2.5, scale: 1.0, xp: 1, gold: 1,
     sight: 12, leash: 20, barY: 1.85,
     attacks: {
@@ -29,7 +29,7 @@ export const KINDS = {
     choose: m => (!m.lastHeavy && Math.random() < 0.4 ? 'heavy' : 'light'),
   },
   archer: {
-    id: 'archer', loot: 0.32, name: 'Knoglebueskytte', model: () => createArcherModel(),
+    id: 'archer', loot: 0.32, name: 'Bone Archer', model: () => createArcherModel(),
     hp: 0.6, damage: 0.9, speed: 2.4, scale: 1.0, xp: 1.1, gold: 1.1,
     sight: 15, leash: 26, barY: 1.75,
     keepAway: { min: 5.5, max: 11 },     // backs off if you close in
@@ -40,7 +40,7 @@ export const KINDS = {
     choose: () => 'skud',
   },
   guard: {
-    id: 'guard', loot: 0.42, name: 'Skjoldvagt', model: () => createGuardModel(),
+    id: 'guard', loot: 0.42, name: 'Shield Guard', model: () => createGuardModel(),
     hp: 1.9, damage: 1.1, speed: 1.7, scale: 1.0, xp: 1.4, gold: 1.4,
     sight: 11, leash: 18, barY: 2.0,
     blockFront: 0.85,                    // a hit to the shield barely scratches it
@@ -51,7 +51,7 @@ export const KINDS = {
     choose: () => 'bash',
   },
   boss: {
-    id: 'boss', name: 'Gravherren', model: () => createBossModel(),
+    id: 'boss', name: 'The Grave Lord', model: () => createBossModel(),
     boss: true, loot: 1,
     hp: 12, damage: 2.1, speed: 2.2, scale: 1.0, xp: 6, gold: 8, bodyRadius: 2.6,
     sight: 22, leash: 40, barY: 3.2,

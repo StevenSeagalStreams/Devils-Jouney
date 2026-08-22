@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { circle, boxAt } from './collide.js';
 import { TOWN, heightAt } from './world.js';
 
 /* The town is deliberately small and readable: a handful of cottages around a
@@ -156,6 +157,7 @@ export function createTown(scene) {
   const rng = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
 
   const group = new THREE.Group();
+  const solids = [];
   const place = (obj, x, z, yaw = 0) => {
     obj.position.set(x, heightAt(x, z), z);
     obj.rotation.y += yaw;
@@ -173,8 +175,10 @@ export function createTown(scene) {
   group.add(plaza);
 
   place(well(), TOWN.x, TOWN.z + 1.5);
+  solids.push(circle(TOWN.x, TOWN.z + 1.5, 1.1));
   place(fence(), 0, 0);
   place(signpost(), TOWN.x + 1.6, TOWN.z - TOWN.radius + 1.2, -0.4);
+  solids.push(circle(TOWN.x + 1.6, TOWN.z - TOWN.radius + 1.2, 0.3));
 
   // cottages around the back half of the ring
   const spots = [
@@ -184,16 +188,21 @@ export function createTown(scene) {
   const roofs = ['#8d4231', '#7a4a2c', '#94513a', '#6f4433', '#8d4231'];
   spots.forEach(([dx, dz, yaw], i) => {
     place(cottage(rng, { wall: walls[i], roof: roofs[i] }), TOWN.x + dx, TOWN.z + dz, yaw);
+    solids.push(boxAt(TOWN.x + dx, TOWN.z + dz, 4.2 / 2, 3.6 / 2, yaw));
   });
 
   // the two shops the player actually uses, either side of the gate
   const healerStall = place(stall('#4fae62'), TOWN.x - 4.6, TOWN.z - 5.2, 0.35);
   const merchantStall = place(stall('#c9a13a'), TOWN.x + 4.6, TOWN.z - 5.2, -0.35);
+  // just the counter, so you can still walk up to it and be served
+  solids.push(boxAt(TOWN.x - 4.6, TOWN.z - 5.2, 1.5, 0.4, 0.35));
+  solids.push(boxAt(TOWN.x + 4.6, TOWN.z - 5.2, 1.5, 0.4, -0.35));
 
   scene.add(group);
 
   return {
     group,
+    solids,
     // NPCs stand behind their counter, facing the gate the player walks in from
     healerSpot: new THREE.Vector3(TOWN.x - 4.6, 0, TOWN.z - 5.2 + 1.35),
     merchantSpot: new THREE.Vector3(TOWN.x + 4.6, 0, TOWN.z - 5.2 + 1.35),

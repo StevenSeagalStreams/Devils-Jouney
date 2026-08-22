@@ -72,7 +72,7 @@ export class UI {
 
     let html = `
       <div class="tt-name" style="color:${rank ? branch.color : '#8a8a8a'}">${node.name}</div>
-      <div class="tt-type">${branch.name} · ${active ? 'aktiv evne' : 'passiv evne'} · rang ${rank}/${node.maxRank}</div>`;
+      <div class="tt-type">${branch.name} · ${active ? 'active' : 'passive'} · rank ${rank}/${node.maxRank}</div>`;
     // the reason you cannot take it belongs at the top, not buried at the bottom
     if (why) {
       html += `<div class="tt-block ${why.code === 'maxed' ? 'good' : 'bad'}">${why.text}</div>`;
@@ -89,7 +89,7 @@ export class UI {
     if (d.power) html += `<div class="tt-power">${d.power}</div>`;
     if (active) {
       const a = ABILITY_BY_ID[node.ability];
-      html += `<div class="tt-cmp">${a.stamina ? `${a.stamina} udholdenhed · ` : ''}${a.cooldown} sek. pause</div>`;
+      html += `<div class="tt-cmp">${a.stamina ? `${a.stamina} stamina · ` : ''}${a.cooldown}s cooldown</div>`;
     }
 
     // both ends of every synergy — the far end is invisible from here otherwise
@@ -99,12 +99,12 @@ export class UI {
       html += '<div class="tt-syn">';
       for (const sy of taken) html += `<div class="on">↳ ${sy.text}</div>`;
       if (rest.length) {
-        html += `<div>↳ Bliver også stærkere af: ${rest.map(sy => sy.name).join(', ')}</div>`;
+        html += `<div>↳ Also grows with: ${rest.map(sy => sy.name).join(', ')}</div>`;
       }
       html += '</div>';
     }
     if (d.feeds.length) {
-      html += `<div class="tt-syn"><div>↳ Styrker: ${d.feeds.join(', ')}</div></div>`;
+      html += `<div class="tt-syn"><div>↳ Strengthens: ${d.feeds.join(', ')}</div></div>`;
     }
     return html;
   }
@@ -198,15 +198,15 @@ export class UI {
     let cmp = '';
     if (equipped && equipped.id !== item.id) {
       cmp = diff > 0
-        ? '<div class="tt-cmp up">▲ Bedre end det du har på</div>'
-        : diff < 0 ? '<div class="tt-cmp down">▼ Dårligere end det du har på</div>'
-          : '<div class="tt-cmp">Samme som det du har på</div>';
+        ? '<div class="tt-cmp up">▲ Better than what you are wearing</div>'
+        : diff < 0 ? '<div class="tt-cmp down">▼ Worse than what you are wearing</div>'
+          : '<div class="tt-cmp">The same as what you are wearing</div>';
     } else if (equipped && equipped.id === item.id) {
-      cmp = '<div class="tt-cmp">Du har den på</div>';
+      cmp = '<div class="tt-cmp">You are wearing this</div>';
     }
     this.tooltip.innerHTML = `
       <div class="tt-name" style="color:${item.color}">${item.name}</div>
-      <div class="tt-type">${item.rarityName} · niveau ${item.level}</div>
+      <div class="tt-type">${item.rarityName} · level ${item.level}</div>
       ${statLines(item).map(s => `<div class="tt-stat">${s}</div>`).join('')}
       ${cmp}`;
     this.tooltip.style.display = 'block';
@@ -238,7 +238,7 @@ export class UI {
     $('#skills-reset').addEventListener('click', () => {
       if (!spentPoints(this.game.state.ranks)) return;
       this.game.resetTree();
-      this.toast('Du har fået alle dine evnepoint tilbage', 1800);
+      this.toast('All your skill points have been given back', 1800);
     });
 
     // three columns, one per branch, nodes stacked by tier
@@ -260,7 +260,7 @@ export class UI {
           el.className = 'skill-node';
           el.className = `skill-node ${node.kind}`;
           el.innerHTML = `<div class="sn-icon"><canvas width="96" height="96"></canvas>
-              <div class="sn-kind">${node.kind === 'active' ? 'evne' : 'passiv'}</div>
+              <div class="sn-kind">${node.kind === 'active' ? 'active' : 'passive'}</div>
               <div class="sn-rank"><b>0</b>/${node.maxRank}</div></div>
             <div class="sn-name">${node.name}</div>
             <div class="sn-pips">${'<i></i>'.repeat(node.maxRank)}</div>`;
@@ -311,9 +311,9 @@ export class UI {
     // not quietly spend a point on whatever the player happened to hit.
     if (this.pickedSlot >= 0) {
       if (node.kind !== 'active') {
-        this.toast('Passive evner kan ikke lægges på bjælken', 1500);
+        this.toast('Passives cannot go on the bar', 1500);
       } else if (!(s.ranks[node.id] > 0)) {
-        this.toast('Du har ikke lært den evne endnu', 1500);
+        this.toast('You have not learned that skill yet', 1500);
       } else {
         this.game.assignBar(this.pickedSlot, node.id);
         this.pickedSlot = -1;
@@ -410,9 +410,9 @@ export class UI {
     this.skills.classList.toggle('picking', this.pickedSlot >= 0);
     this.drawSkillLinks();
     $('#skill-hint').innerHTML = this.pickedSlot >= 0
-      ? `Plads <b>${this.pickedSlot + 1}</b> er valgt — klik nu på den evne, du vil lægge der.`
-      : 'Klik på en evne for at sætte et point i den.<br>'
-        + 'Klik på en plads herunder, og så på en evne, for at lægge den der. Højreklik tømmer en plads.';
+      ? `Slot <b>${this.pickedSlot + 1}</b> is picked — now click the skill you want in it.`
+      : 'Click a skill to put a point into it.<br>'
+        + 'Click a slot below, then a skill, to place it there. Right-click empties a slot.';
   }
 
   toggleSkills(force) {
@@ -451,8 +451,8 @@ export class UI {
     drawItemIcon(slot.querySelector('canvas'), w);
     slot.classList.toggle('filled', !!w);
     slot.style.setProperty('--rare', w ? w.color : '#8a8a8a');
-    $('#equipped-name').textContent = w ? w.name : 'Ingen våben';
-    $('#equipped-stats').innerHTML = w ? statLines(w).map(s => `<div>${s}</div>`).join('') : '<div>bare næver</div>';
+    $('#equipped-name').textContent = w ? w.name : 'No weapon';
+    $('#equipped-stats').innerHTML = w ? statLines(w).map(s => `<div>${s}</div>`).join('') : '<div>bare fists</div>';
   }
 
   renderBag() {
@@ -479,7 +479,7 @@ export class UI {
     }
     for (const [slot, el] of Object.entries(this.equipEls)) {
       const item = this.game.state.equipped[slot];
-      el.innerHTML = item ? '' : `<span class="ph">${{ weapon: 'Våben', armor: 'Rustning', trinket: 'Amulet' }[slot]}</span>`;
+      el.innerHTML = item ? '' : `<span class="ph">${{ weapon: 'Weapon', armor: 'Armour', trinket: 'Amulet' }[slot]}</span>`;
       el.classList.toggle('filled', !!item);
       el.style.setProperty('--rare', item ? item.color : '#383838');
       if (item) {
@@ -497,13 +497,13 @@ export class UI {
     const s = this.game.state;
     const t = this.game.totals();
     $('#stat-block').innerHTML = `
-      <div>Niveau <b>${s.level}</b></div>
-      <div>Liv <b>${Math.ceil(s.hp)} / ${t.maxHp}</b></div>
+      <div>Level <b>${s.level}</b></div>
+      <div>Life <b>${Math.ceil(s.hp)} / ${t.maxHp}</b></div>
       <div>${STAT_LABEL.skade} <b>${t.damage}</b></div>
       <div>${STAT_LABEL.smidighed} <b>${t.smidighed}</b></div>
       <div>${STAT_LABEL.styrke} <b>${t.styrke}</b></div>
-      <div>Kritisk <b>${Math.round(t.crit * 100)}%</b></div>
-      <div>Evnepoint tilbage <b>${t.skillPoints}</b></div>`;
+      <div>Critical <b>${Math.round(t.crit * 100)}%</b></div>
+      <div>Skill points left <b>${t.skillPoints}</b></div>`;
   }
 
   /** A banked skill point should never be invisible — it is the one thing a
@@ -589,13 +589,13 @@ export class UI {
     const missing = Math.max(0, t.maxHp - game.state.hp);
     const cost = game.healCost();
     const afford = game.state.gold >= cost;
-    $('#shop-title').textContent = 'Helbrederen';
+    $('#shop-title').textContent = 'The Healer';
     $('#shop-body').innerHTML = `
       <div class="heal-card shop-col">
-        <p>Du har <b>${Math.ceil(game.state.hp)} / ${t.maxHp}</b> liv.<br>
-        ${missing <= 0 ? 'Du fejler ikke noget.' : `Jeg gør dig hel igen for <b>${cost}</b> guld.`}</p>
+        <p>You have <b>${Math.ceil(game.state.hp)} / ${t.maxHp}</b> life.<br>
+        ${missing <= 0 ? 'There is nothing wrong with you.' : `I will make you whole again for <b>${cost}</b> gold.`}</p>
         <button class="big" id="heal-btn" ${missing <= 0 || !afford ? 'disabled' : ''}>
-          ${missing <= 0 ? 'Du er rask' : afford ? `Hel mig (${cost} guld)` : `Ikke nok guld (${cost})`}
+          ${missing <= 0 ? 'You are well' : afford ? `Heal me (${cost} gold)` : `Not enough gold (${cost})`}
         </button>
       </div>`;
     const btn = $('#heal-btn');
@@ -606,7 +606,7 @@ export class UI {
 
   /** Merchant: his stock on the left, your bag on the right. */
   openMerchant(game) {
-    $('#shop-title').textContent = 'Handelsmanden';
+    $('#shop-title').textContent = 'The Merchant';
     const row = (item, label, price, enabled, onClick) => {
       const el = document.createElement('div');
       el.className = 'shop-row';
@@ -631,19 +631,19 @@ export class UI {
 
     const body = $('#shop-body');
     body.innerHTML = `
-      <div class="shop-col"><div class="col-label">Til salg</div><div class="shop-list" id="buy-list"></div></div>
-      <div class="shop-col"><div class="col-label">Dine ting</div><div class="shop-list" id="sell-list"></div></div>`;
+      <div class="shop-col"><div class="col-label">For sale</div><div class="shop-list" id="buy-list"></div></div>
+      <div class="shop-col"><div class="col-label">Your things</div><div class="shop-list" id="sell-list"></div></div>`;
     const buy = $('#buy-list'), sell = $('#sell-list');
 
-    if (!game.stock.length) buy.innerHTML = '<div class="shop-empty">Udsolgt for i dag.</div>';
+    if (!game.stock.length) buy.innerHTML = '<div class="shop-empty">Sold out for today.</div>';
     for (const item of game.stock) {
       const price = game.buyPrice(item);
-      buy.appendChild(row(item, 'Køb', price, game.state.gold >= price,
+      buy.appendChild(row(item, 'Buy', price, game.state.gold >= price,
         () => { game.buyItem(item); this.openMerchant(game); }));
     }
-    if (!game.state.bag.length) sell.innerHTML = '<div class="shop-empty">Din taske er tom.</div>';
+    if (!game.state.bag.length) sell.innerHTML = '<div class="shop-empty">Your bag is empty.</div>';
     for (const item of game.state.bag) {
-      sell.appendChild(row(item, 'Sælg', game.sellPrice(item), true,
+      sell.appendChild(row(item, 'Sell', game.sellPrice(item), true,
         () => { game.sellItem(item); this.openMerchant(game); }));
     }
     this.shop.classList.remove('hidden');

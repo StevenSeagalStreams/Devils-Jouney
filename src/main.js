@@ -3,6 +3,7 @@ import { createWorld, heightAt, TOWN, townDistance } from './world.js';
 import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel } from './characters.js';
 import { makeItem, itemScore, RARITIES } from './items.js';
 import { createTown } from './town.js';
+import { makeColliders } from './collide.js';
 import { KINDS, statsFor } from './monsters.js';
 import { createMausoleum, createDungeon, collideMaze, mazeBlocked, mazeLineBlocked, DUNGEON_ORIGIN, MAUSOLEUM } from './dungeon.js';
 import { ABILITIES, ABILITY_BY_ID, abilityPower, BAR_SLOTS } from './abilities.js';
@@ -136,11 +137,16 @@ function setZone(next) {
   z.enter();
   doorArmed = false;
   camSnap = true;
-  ui.toast(next === 'dungeon' ? 'Gravkammeret' : 'Engen', 1800);
+  ui.toast(next === 'dungeon' ? 'The Crypt' : 'The Meadow', 1800);
 }
 
 /* --------------------------- town --------------------------- */
 const town = createTown(scene);
+
+/* Everything above ground you cannot walk through, in one list: tree trunks
+   from the meadow, the cottages, the well and the two counters in town, and
+   the mausoleum walls (its doorway is the gap you step into to go down). */
+const solids = makeColliders([...world.solids, ...town.solids, ...mausoleum.solids]);
 
 /** Inside the fence nothing can hurt you. */
 function inTown(pos = player.pos) {
@@ -148,8 +154,8 @@ function inTown(pos = player.pos) {
 }
 
 const npcs = [
-  { kind: 'healer', name: 'Helbrederen', hint: 'hele dig', spot: town.healerSpot, obj: createNpcModel('healer') },
-  { kind: 'merchant', name: 'Handelsmanden', hint: 'handle', spot: town.merchantSpot, obj: createNpcModel('merchant') },
+  { kind: 'healer', name: 'the Healer', hint: 'be patched up', spot: town.healerSpot, obj: createNpcModel('healer') },
+  { kind: 'merchant', name: 'the Merchant', hint: 'trade', spot: town.merchantSpot, obj: createNpcModel('merchant') },
 ];
 for (const npc of npcs) {
   npc.obj.position.set(npc.spot.x, heightAt(npc.spot.x, npc.spot.z), npc.spot.z);
@@ -173,15 +179,15 @@ function updateNpcs(dt) {
 
   // doorways: step into one and you are through, no key press
   const door = zone === 'overworld'
-    ? { pos: mausoleum.door, to: 'dungeon', label: 'Ned i gravkammeret', radius: 2.2 }
-    : { pos: dungeon.exitSpot, to: 'overworld', label: 'Op i dagslyset', radius: 2.0 };
+    ? { pos: mausoleum.door, to: 'dungeon', label: 'Down into the crypt', radius: 2.2 }
+    : { pos: dungeon.exitSpot, to: 'overworld', label: 'Up into the daylight', radius: 2.0 };
   const doorDist = Math.hypot(player.pos.x - door.pos.x, player.pos.z - door.pos.z);
   // must step clear of the doorway before it can pull you back the other way
   if (!doorArmed && doorDist > door.radius + 1.0) doorArmed = true;
   const atDoor = doorArmed && doorDist < door.radius;
 
   if (ui.shopOpen || ui.inventoryOpen) ui.hidePrompt();
-  else if (best) ui.showPrompt(`<b>E</b> — tal med ${best.name} for at ${best.hint}`);
+  else if (best) ui.showPrompt(`<b>E</b> — talk to ${best.name} to ${best.hint}`);
   else if (doorArmed && doorDist < door.radius + 4) ui.showPrompt(door.label);
   else ui.hidePrompt();
 
@@ -493,7 +499,7 @@ function startBossAttack(m, name, dist) {
         ui.floatText('forbi!', screenOf(m.pos, m.kind.barY), 'loot');
       }
     }, { baseOpacity: 0.25, follow: () => ({ x: m.pos.x, z: m.pos.z, yaw: aimYaw() }) });
-    ui.toast('Gravherren svinger pisken', 1100);
+    ui.toast('The Grave Lord swings his whip', 1100);
   } else if (a.shape === 'charge') {
     const mesh = laneMesh(m.pos.x, m.pos.z, m.yaw, a.length, a.width, a.tell);
     addGroundFx(mesh, a.hit, () => {
@@ -501,7 +507,7 @@ function startBossAttack(m, name, dist) {
       a.chargeT = a.length / a.speed;
       a.hitDone = false;
     }, { baseOpacity: 0.3 });
-    ui.toast('Gravherren stormer!', 1200);
+    ui.toast('The Grave Lord charges!', 1200);
   } else if (a.shape === 'slam') {
     // the whole hall dies except three rings — stand in one
     const safe = [];
@@ -525,7 +531,7 @@ function startBossAttack(m, name, dist) {
       if (inBlast && !inSafe && !inTown()) hurtPlayer(m.damage * a.dmg, 'boss:slam');
       else ui.floatText('i sikkerhed!', screenOf(player.pos, 2.2), 'loot');
     }, { baseOpacity: 0.16 });
-    ui.toast('Stil dig i en blå cirkel!', 2200);
+    ui.toast('Stand in a blue ring!', 2200);
     m.slamT = a.cooldown;
   }
   if (a.shape === 'charge') m.chargeT = a.cooldown;
@@ -631,12 +637,23 @@ function updateMonster(m, dt, index) {
   finishMonsterFrame(m, dt);
 }
 
+/** Is this spot inside something solid, whichever zone we are in? */
+function blockedAt(x, z, radius) {
+  return zone === 'dungeon' ? mazeBlocked(x, z, radius) : solids.blocked(x, z, radius);
+}
+
+/** Put a position back on open ground, whichever zone it is standing in. */
+function pushOutOfWalls(pos, radius) {
+  if (zone === 'dungeon') collideMaze(pos, radius);
+  else solids.resolve(pos, radius);
+}
+
 /** Shared per-frame tail: walls, the fence, spacing, and the animation. */
 function finishMonsterFrame(m, dt) {
   if (m.state !== 'idle' && inTown()) { m.state = 'idle'; m.stateT = 0; m.atk = null; }
 
   const wallRadius = m.kind.boss ? 1.1 : 0.55;
-  if (zone === 'dungeon') collideMaze(m.pos, wallRadius);
+  pushOutOfWalls(m.pos, wallRadius);
 
   // never stand inside the player
   const sep = tmpV.copy(m.pos).sub(player.pos);
@@ -646,19 +663,17 @@ function finishMonsterFrame(m, dt) {
   if (sepD < body && sepD > 0.001) {
     sep.normalize();
     m.pos.copy(player.pos).addScaledVector(sep, body);
-    if (zone === 'dungeon') {
-      // the shove must not bury it in stone, so put it back on the floor first
-      collideMaze(m.pos, wallRadius);
-      // if it is still inside us it has nowhere to go — a creature backed
-      // against a wall is not pushed through it, we give way instead
-      const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
-      const d = Math.hypot(dx, dz);
-      if (d < body - 0.02) {
-        const ux = d > 0.001 ? dx / d : sep.x, uz = d > 0.001 ? dz / d : sep.z;
-        player.pos.x = m.pos.x - ux * body;
-        player.pos.z = m.pos.z - uz * body;
-        collideMaze(player.pos, 0.45);
-      }
+    // the shove must not bury it in a wall, so put it back on open ground first
+    pushOutOfWalls(m.pos, wallRadius);
+    // if it is still inside us it has nowhere to go — a creature backed against
+    // a wall is not pushed through it, we give way instead
+    const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d < body - 0.02) {
+      const ux = d > 0.001 ? dx / d : sep.x, uz = d > 0.001 ? dz / d : sep.z;
+      player.pos.x = m.pos.x - ux * body;
+      player.pos.z = m.pos.z - uz * body;
+      pushOutOfWalls(player.pos, 0.45);
     }
   }
   m.pos.y = 0;
@@ -914,7 +929,7 @@ const game = {
     if (item.slot === 'weapon') player.obj.userData.setWeaponTier(item.tier);
     this.clampVitals();
     ui.renderAll();
-    ui.toast(`Tog ${item.name} på`, 1200);
+    ui.toast(`Equipped ${item.name}`, 1200);
   },
   unequip(slot) {
     const item = state.equipped[slot];
@@ -946,7 +961,7 @@ const game = {
     state.hp = totals().maxHp;
     ui.setGold(state.gold);
     ui.renderStats();
-    ui.toast('Du føler dig frisk igen', 1300);
+    ui.toast('You feel whole again', 1300);
   },
   buyItem(item) {
     const price = this.buyPrice(item);
@@ -958,7 +973,7 @@ const game = {
     state.bag.unshift(item);
     ui.setGold(state.gold);
     ui.renderAll();
-    ui.toast(`Købte ${item.name}`, 1200);
+    ui.toast(`Bought ${item.name}`, 1200);
   },
   sellItem(item) {
     const i = state.bag.indexOf(item);
@@ -973,7 +988,7 @@ const game = {
     if (i < 0) return;
     state.bag.splice(i, 1);
     ui.renderAll();
-    ui.toast(`Smed ${item.name} væk`, 1100);
+    ui.toast(`Threw away ${item.name}`, 1100);
   },
 };
 
@@ -1037,8 +1052,8 @@ function gainXp(amount) {
     state.hp = totals().maxHp;
     state.stamina = totals().maxStamina;
     const left = pointsLeft(state.level, state.ranks);
-    ui.toast(`Niveau ${state.level} — du har ${left} evnepoint tilbage. Tryk K.`, 2600, 'level');
-    ui.floatText(`Niveau ${state.level}`, screenOf(player.pos, 2.4), 'xp');
+    ui.toast(`Level ${state.level} — you have ${left} skill points left. Press K.`, 2600, 'level');
+    ui.floatText(`Level ${state.level}`, screenOf(player.pos, 2.4), 'xp');
     ui.renderStats();
     ui.renderSkills();
   }
@@ -1062,9 +1077,9 @@ function damageMonster(m, amount, crit) {
   m.hurt = 0.18;
   // hitting a peaceful creature makes it a problem
   if (m.kind.passive) { m.angry = 12; if (m.state === 'idle') { m.state = 'chase'; m.stateT = 0; } }
-  ui.floatText(blocked ? `blokeret ${amount}` : `${amount}`, screenOf(m.pos, m.kind.barY),
+  ui.floatText(blocked ? `blocked ${amount}` : `${amount}`, screenOf(m.pos, m.kind.barY),
     blocked ? 'loot' : crit ? 'crit' : 'dmg');
-  // Blodtørst: a slice of what you dealt comes back. Capped per swing, because
+  // Bloodthirst: a slice of what you dealt comes back. Capped per swing, because
   // one Dommedag into a crowd would otherwise be a full heal.
   const t = state.ranks.blodtorst && !state.dead ? totals() : null;
   if (t && t.lifesteal > 0) {
@@ -1161,7 +1176,7 @@ function playerAttack(dt) {
       const raw = t.damage * (0.9 + Math.random() * 0.2) * (crit ? 1.8 : 1);
       for (const m of hit) damageMonster(m, Math.max(1, Math.round(raw)), crit);
     } else {
-      ui.floatText('svup!', screenOf(player.pos, 2.0), 'dmg');
+      ui.floatText('whiff!', screenOf(player.pos, 2.0), 'dmg');
     }
   }
   if (player.attackTime > player.attackDur) player.attackTime = -1;
@@ -1239,7 +1254,7 @@ function monstersInRange(origin, range, arc = null) {
 function useAbility(slot) {
   const nodeId = state.bar[slot];
   if (!nodeId) {
-    if (state.running) ui.toast('Tom plads — vælg en evne i evnetræet (K)', 1400);
+    if (state.running) ui.toast('Empty slot — pick a skill in the skill tree (K)', 1400);
     return false;
   }
   const node = NODE_BY_ID[nodeId];
@@ -1249,7 +1264,7 @@ function useAbility(slot) {
   if ((state.cooldowns[ability.id] || 0) > 0) return false;
   const t = totals();
   if (ability.stamina > state.stamina) {
-    ui.toast('Ikke nok udholdenhed', 1100);
+    ui.toast('Not enough stamina', 1100);
     return false;
   }
 
@@ -1265,7 +1280,7 @@ function useAbility(slot) {
       player.hasHit = true;                     // this ability does the damage itself
       const hit = monstersInRange(player.pos, ability.range, ability.arc);
       for (const m of hit) damageMonster(m, power, true);
-      if (!hit.length) ui.floatText('forbi!', screenOf(player.pos, 2.0), 'loot');
+      if (!hit.length) ui.floatText('missed!', screenOf(player.pos, 2.0), 'loot');
       break;
     }
     case 'aoe': {
@@ -1286,7 +1301,7 @@ function useAbility(slot) {
       const caught = new Set(monstersInRange(player.pos, ability.range));
       for (let i = 0; i < steps; i++) {
         const nx = player.pos.x + dir.x * step, nz = player.pos.z + dir.z * step;
-        if (zone === 'dungeon' && mazeBlocked(nx, nz, 0.5)) break;
+        if (blockedAt(nx, nz, 0.5)) break;
         player.pos.x = nx; player.pos.z = nz;
         for (const m of monstersInRange(player.pos, ability.range)) caught.add(m);
       }
@@ -1296,7 +1311,7 @@ function useAbility(slot) {
         damageMonster(m, power, true);
         // shove it back, but never into the stone
         const bx = m.pos.x + dir.x * 2.2, bz = m.pos.z + dir.z * 2.2;
-        if (!(zone === 'dungeon' && mazeBlocked(bx, bz, m.kind.bodyRadius || 0.6))) {
+        if (!blockedAt(bx, bz, m.kind.bodyRadius || 0.6)) {
           m.pos.x = bx; m.pos.z = bz;
         }
         m.state = 'chase';
@@ -1321,7 +1336,7 @@ function useAbility(slot) {
     }
     case 'bolt': {
       const hit = monstersInRange(player.pos, ability.range);
-      if (!hit.length) { ui.floatText('ingen fjende i sigte', screenOf(player.pos, 2.0), 'loot'); break; }
+      if (!hit.length) { ui.floatText('no enemy in range', screenOf(player.pos, 2.0), 'loot'); break; }
       for (const m of hit) { burstFx(m.obj.position, ability.color); damageMonster(m, power, true); }
       break;
     }
@@ -1385,9 +1400,8 @@ function updatePlayer(dt) {
     }
   }
 
-  if (zone === 'dungeon') {
-    collideMaze(player.pos, 0.45);
-  } else {
+  pushOutOfWalls(player.pos, 0.45);
+  if (zone !== 'dungeon') {
     const lim = 90;
     player.pos.x = THREE.MathUtils.clamp(player.pos.x, -lim, lim);
     player.pos.z = THREE.MathUtils.clamp(player.pos.z, -lim, lim);
@@ -1503,7 +1517,7 @@ function updateDrops(dt) {
       const cur = state.equipped[d.item.slot];
       const better = !cur || itemScore(d.item) > itemScore(cur);
       ui.renderAll();
-      ui.toast(better ? `Fandt ${d.item.name} — bedre end dit nuværende` : `Fandt ${d.item.name}`, 1600);
+      ui.toast(better ? `Found ${d.item.name} — better than what you are wearing` : `Found ${d.item.name}`, 1600);
       ui.floatText(d.item.name, screenOf(d.obj.position, 1.2), 'loot');
       scene.remove(d.obj);
       drops.splice(i, 1);
@@ -1613,7 +1627,7 @@ document.getElementById('respawn').addEventListener('click', respawn);
 // starting gear, so the dock reads like the concept art from frame one
 const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
 starter.stats = { skade: 5 };
-starter.name = 'Normal Sværd 1';
+starter.name = 'Plain Sword 1';
 game.equip(starter);
 state.bar = sanitizeBar(state.bar, state.ranks, BAR_SLOTS);
 state.hp = totals().maxHp;
@@ -1658,6 +1672,7 @@ window.__dj = {
   get zone() { return zone; },
   setZone,
   mausoleum, dungeon, mazeBlocked, hasLineOfSight,
+  solids, blockedAt,
   get groundFx() { return groundFx; },
   playerInLane,
   get hurtLog() { return hurtLog; },
