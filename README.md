@@ -111,8 +111,15 @@ against a tree that costs seventy-five: you will never fill it, which is the
 point. Clicking a skill spends a point; `Nulstil` hands them all back, free, so
 trying a build costs nothing.
 
-Second and third tiers want a level and a skill above them, and the faint lines
-in each column show what feeds what.
+Second and third tiers want a level and a skill above them, and the lines in each
+column show what feeds what — dashed until you take the skill they hang off, then
+solid and lit.
+
+Each node says whether it is an **evne** (an active skill you press, which goes on
+the bar) or a **passiv** (which just works). Hover any of them: the tooltip shows
+what it does at your rank, what it will do at the next one, which skills are
+feeding it and by how much, and — the part that is otherwise invisible — which
+other skills *it* is feeding.
 
 Two things make a skill stronger:
 
@@ -154,7 +161,8 @@ open the tree, click a slot, then click the skill you want in it — right-click
 slot to empty it. Passive skills never go on the bar.
 
 The rank sits in the corner of each slot, a running cooldown sweeps around it
-with the seconds left, and timed effects sit as pills above the bar.
+with the seconds left, and timed effects sit as pills above the bar. A gold pip
+by the XP bar tells you when you have points you have not spent.
 
 ### The town
 

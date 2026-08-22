@@ -158,7 +158,8 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 }
 .slot-big{width:72px;height:72px;border-color:#4a4a4a}
 .slot .icon{width:100%;height:100%;image-rendering:auto}
-.slot .key{position:absolute;right:3px;bottom:1px;font-size:11px;color:#8d8d8d}
+.slot .key{position:absolute;right:4px;bottom:1px;font-size:12.5px;font-weight:700;color:#c9a86a;
+  text-shadow:0 1px 2px rgba(0,0,0,.9)}
 .slot.filled{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 20%, #2a2a2a);box-shadow:inset 0 0 12px rgba(0,0,0,.75)}
 .slot.selected{outline:2px solid #ffd88a;outline-offset:1px}
 .slot:hover{border-color:#6d6d6d}
@@ -173,14 +174,18 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   font-size:17px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.9);
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;
 }
-.slot.ability.locked{filter:grayscale(1) brightness(.55)}
 .slot.ability .rank{
-  position:absolute;left:3px;top:1px;font-size:11px;font-weight:700;color:#c9a86a;
+  position:absolute;left:4px;top:1px;font-size:10px;color:#8d887c;
   text-shadow:0 1px 2px rgba(0,0,0,.9);pointer-events:none;
 }
-.slot.ability.empty{border-style:dashed;border-color:#333;background:linear-gradient(180deg,#161616,#0c0c0c)}
+.slot.ability .rank:not(:empty)::before{content:'r'}
+.slot.ability.empty{border-color:#242424;background:radial-gradient(circle at 50% 45%,#151515,#090909)}
+.slot.ability.empty::after{
+  content:'+';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:24px;color:#2e2e2e;pointer-events:none;
+}
 .slot.ability.empty:hover{border-color:#4d4d4d}
-.slot.ability.ready{border-color:color-mix(in srgb, var(--rare,#8a8a8a) 55%, #2a2a2a)}
+.slot.ability.empty:hover::after{color:#4d4d4d}
 
 /* timed effects */
 .buffs{display:flex;gap:8px;min-height:0}
@@ -228,7 +233,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 /* tooltip */
 #tooltip{
-  position:absolute;z-index:20;pointer-events:none;min-width:190px;max-width:260px;
+  position:absolute;z-index:20;pointer-events:none;min-width:190px;max-width:320px;
   background:rgba(10,10,10,.96);border:2px solid #444;border-radius:8px;padding:10px 12px;
   box-shadow:0 10px 26px rgba(0,0,0,.6);font-size:14px;display:none;
 }
@@ -295,12 +300,14 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 
 
 /* ---------- skill tree ---------- */
-#skills{width:min(1020px,95vw);max-height:calc(100vh - 120px)}
+#skills{width:min(1020px,95vw);max-height:calc(100vh - 96px)}
 /* the columns scroll; the bar and its hint stay pinned at the bottom */
 .skills-body{flex-direction:column;gap:0;padding-bottom:0;overflow:hidden}
 .skill-cols{
   display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
-  flex:1;min-height:0;overflow:auto;padding-bottom:14px;
+  /* auto basis, so the columns' real height sizes the panel — with flex:1 (basis
+     0) they ask for nothing and the panel closes over them. */
+  flex:1 1 auto;min-height:0;overflow:auto;padding-bottom:14px;
   scrollbar-width:thin;scrollbar-color:#5a5a5a #191919;
 }
 .skill-col{
@@ -309,8 +316,8 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   background:linear-gradient(180deg,color-mix(in srgb,var(--c) 7%,#141414),#101010);
 }
 .skill-links{position:absolute;inset:0;pointer-events:none;z-index:0}
-.skill-links line{stroke:#3a3a3a;stroke-width:2}
-.skill-links line.on{stroke:color-mix(in srgb,var(--c) 60%,#3a3a3a)}
+.skill-links path{fill:none;stroke:#4e4e4e;stroke-width:2;stroke-dasharray:4 4}
+.skill-links path.on{stroke:color-mix(in srgb,var(--c) 75%,#3a3a3a);stroke-width:3;stroke-dasharray:none}
 .skill-row{position:relative;z-index:1}
 .skill-branch{margin-bottom:10px;text-align:center}
 .skill-branch b{
@@ -332,6 +339,12 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   border:2px solid #383838;box-shadow:inset 0 0 10px rgba(0,0,0,.8);
 }
 .skill-node .sn-icon canvas{width:100%;height:100%}
+.skill-node .sn-kind{
+  position:absolute;left:-4px;top:-5px;padding:0 4px;border-radius:3px;
+  background:#0d0d0d;border:1px solid #3a3a3a;color:#8d887c;
+  font-size:9px;line-height:13px;letter-spacing:.3px;
+}
+.skill-node.active .sn-kind{color:#c9a86a;border-color:#4d4433}
 .skill-node .sn-rank{
   position:absolute;right:-4px;bottom:-4px;padding:0 4px;border-radius:4px;
   background:#0d0d0d;border:1px solid #3a3a3a;font-size:10.5px;color:#8d887c;line-height:14px;
@@ -341,10 +354,12 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .skill-node .sn-pips{display:flex;gap:3px;justify-content:center;margin-top:4px}
 .skill-node .sn-pips i{width:7px;height:7px;border-radius:50%;background:#2c2c2c;border:1px solid #3a3a3a}
 .skill-node .sn-pips i.on{background:#ffd473;border-color:#8a6210}
-.skill-node.taken .sn-icon{border-color:#6a5c34}
+.skill-node.taken .sn-icon{border-color:#c9a860}
 .skill-node.taken .sn-name{color:#e6e2d6}
-.skill-node.maxed .sn-icon{border-color:#c9a860;box-shadow:inset 0 0 10px rgba(0,0,0,.8),0 0 10px rgba(201,168,96,.28)}
-.skill-node.ready .sn-icon{border-color:#7ce87c}
+.skill-node.maxed .sn-icon{box-shadow:inset 0 0 10px rgba(0,0,0,.8),0 0 12px rgba(201,168,96,.45)}
+.skill-node.maxed .sn-rank b{color:#ffd473}
+/* affordable is its own ring, so it can show at the same time as progress */
+.skill-node.ready .sn-icon{box-shadow:inset 0 0 10px rgba(0,0,0,.8),0 0 0 2px #7ce87c}
 .skill-node.locked{opacity:.42;cursor:default}
 .skill-node.locked:hover{background:none;border-color:transparent}
 
@@ -363,7 +378,7 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .tt-cmp.bad{color:#e08a6a}
 
 /* All three tiers have to be visible at once — nobody scrolls a skill tree. */
-@media (max-height:760px){
+@media (max-height:880px){
   .skill-col{padding:9px 8px 10px}
   .skill-branch{margin-bottom:7px}
   .skill-branch b{font-size:17px}
@@ -376,4 +391,60 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
   .skill-foot{padding:9px 0 12px}
   .skill-bar .slot{width:50px;height:50px}
   .skill-hint{margin-top:6px;font-size:11.5px}
+}
+
+
+/* One panel at a time means one ability bar at a time. */
+#game:has(.panel:not(.hidden)) .dock{display:none}
+
+/* Unspent points are the one thing a new player forgets they have. */
+.skill-nudge{
+  padding:2px 9px;border-radius:5px;font-size:12.5px;white-space:nowrap;
+  color:#ffd473;background:rgba(10,10,10,.7);border:2px solid #6a5218;
+  animation:nudgePulse 2.4s ease-in-out infinite;
+}
+.skill-nudge.hidden{display:none}
+.skill-nudge b{font-weight:800}
+@keyframes nudgePulse{0%,100%{opacity:.72}50%{opacity:1}}
+
+/* A level-up should not read like "not enough stamina". */
+#toast.level{
+  font-family:Georgia,serif;font-variant:small-caps;font-size:30px;color:#ffd473;
+  -webkit-text-stroke:1px rgba(0,0,0,.85);paint-order:stroke fill;
+}
+
+.start-card .lead{
+  margin:2px 0 16px;font-size:16px;color:#ffd473;
+}
+.start-card .keys li.wide{grid-column:1 / -1}
+
+#skills.picking .skill-node:not(.assignable){opacity:.3}
+#skills.picking .skill-node.assignable .sn-icon{box-shadow:inset 0 0 10px rgba(0,0,0,.8),0 0 0 2px #ffd88a}
+
+#tooltip .tt-block{
+  margin:5px 0 6px;padding:3px 7px;border-radius:4px;font-size:13px;
+  background:rgba(224,138,106,.14);border-left:3px solid #e08a6a;color:#ffbfa4;
+}
+#tooltip .tt-block.good{background:rgba(255,212,115,.14);border-left-color:#ffd473;color:#ffd473}
+#tooltip .tt-power{margin:5px 0 2px;font-size:16px;font-weight:700;color:#ffd473}
+#tooltip .tt-syn{margin-top:6px;padding-left:2px;font-size:12px;color:#9a958a;line-height:1.45}
+#tooltip .tt-syn .on{color:#c6c0b0}
+
+/* Very short windows: the whole tree still has to be on screen at once.
+   This has to come last — it and the block above both match here. */
+@media (max-height:680px){
+  #skills{max-height:calc(100vh - 56px)}
+  .skill-col{padding:6px 5px 6px}
+  .skill-branch{margin-bottom:4px}
+  .skill-branch b{font-size:15px}
+  .skill-branch span{display:none}
+  .skill-node{width:66px;padding:2px 2px 1px}
+  .skill-node .sn-icon{width:34px;height:34px}
+  .skill-node .sn-kind{font-size:8px;line-height:11px}
+  .skill-node .sn-name{font-size:10px;margin-top:6px}
+  .skill-node .sn-pips i{width:5px;height:5px}
+  .skill-row{gap:5px;margin-bottom:4px}
+  .skill-foot{padding:6px 0 8px}
+  .skill-bar .slot{width:44px;height:44px}
+  .skill-hint{margin-top:4px;font-size:11px}
 }

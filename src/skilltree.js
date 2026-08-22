@@ -35,7 +35,7 @@ export const NODES = [
     id: 'hug', name: 'Hug', branch: 'klinge', tier: 1, kind: 'active',
     ability: 'hug', maxRank: 5, reqLevel: 1, requires: [],
     text: 'Et hårdt hug på den, der står foran dig.',
-    synergies: [{ id: 'skarp', per: 0.045 }],
+    synergies: [{ id: 'skarp', per: 0.05 }],
   },
   {
     id: 'skarp', name: 'Skarpslebet', branch: 'klinge', tier: 1, kind: 'passive',
@@ -46,14 +46,14 @@ export const NODES = [
   {
     id: 'blodtorst', name: 'Blodtørst', branch: 'klinge', tier: 2, kind: 'passive',
     maxRank: 5, reqLevel: 6, requires: ['hug'],
-    grants: { lifesteal: 0.007 },
-    text: 'Du suger liv af dine slag: 0,7% af skaden pr. rang.',
+    grants: { lifesteal: 0.01 },
+    text: 'Du suger liv af dine slag: 1% af skaden pr. rang.',
   },
   {
     id: 'hvirvelvind', name: 'Hvirvelvind', branch: 'klinge', tier: 2, kind: 'active',
     ability: 'hvirvelvind', maxRank: 5, reqLevel: 6, requires: ['hug'],
     text: 'Snurrer rundt og rammer alt omkring dig.',
-    synergies: [{ id: 'hug', per: 0.05 }, { id: 'skarp', per: 0.035 }],
+    synergies: [{ id: 'hug', per: 0.05 }, { id: 'skarp', per: 0.04 }],
   },
   {
     id: 'dommedag', name: 'Dommedag', branch: 'klinge', tier: 3, kind: 'active',
@@ -73,14 +73,8 @@ export const NODES = [
   {
     id: 'fodfaeste', name: 'Fodfæste', branch: 'jagt', tier: 1, kind: 'passive',
     maxRank: 5, reqLevel: 1, requires: [],
-    grants: { moveSpeed: 0.025, attackSpeed: 0.02 },
-    text: 'Lettere på fødderne: +2,5% fart og +2% angrebstempo pr. rang.',
-  },
-  {
-    id: 'praecision', name: 'Præcision', branch: 'jagt', tier: 2, kind: 'passive',
-    maxRank: 5, reqLevel: 6, requires: ['fodfaeste'],
-    grants: { crit: 0.025 },
-    text: 'Du finder hullerne i forsvaret: +2,5% kritisk chance pr. rang.',
+    grants: { moveSpeed: 0.03, attackSpeed: 0.02 },
+    text: 'Lettere på fødderne: +3% fart og +2% angrebstempo pr. rang.',
   },
   {
     id: 'ildstod', name: 'Ildstød', branch: 'jagt', tier: 2, kind: 'active',
@@ -89,10 +83,16 @@ export const NODES = [
     synergies: [{ id: 'stormlob', per: 0.06 }, { id: 'praecision', per: 0.04 }],
   },
   {
+    id: 'praecision', name: 'Præcision', branch: 'jagt', tier: 2, kind: 'passive',
+    maxRank: 5, reqLevel: 6, requires: ['fodfaeste'],
+    grants: { crit: 0.03 },
+    text: 'Du finder hullerne i forsvaret: +3% kritisk chance pr. rang.',
+  },
+  {
     id: 'kampraseri', name: 'Kampraseri', branch: 'jagt', tier: 3, kind: 'active',
     ability: 'kampraseri', maxRank: 5, reqLevel: 18, requires: ['ildstod'],
     text: 'Du går bersærk og slår hårdere et stykke tid.',
-    synergies: [{ id: 'fodfaeste', per: 0.05 }, { id: 'ildstod', per: 0.035 }, { id: 'skarp', per: 0.03 }],
+    synergies: [{ id: 'fodfaeste', per: 0.05 }, { id: 'ildstod', per: 0.04 }, { id: 'skarp', per: 0.03 }],
   },
 
   /* ---------------------------- Vogter ---------------------------- */
@@ -105,26 +105,26 @@ export const NODES = [
   {
     id: 'haerdet', name: 'Hærdet', branch: 'vogter', tier: 1, kind: 'passive',
     maxRank: 5, reqLevel: 1, requires: [],
-    grants: { maxLife: 0.045 },
-    text: 'Sejt kød og gamle ar: +4,5% liv pr. rang.',
+    grants: { maxLife: 0.05 },
+    text: 'Sejt kød og gamle ar: +5% liv pr. rang.',
   },
   {
-    id: 'gengaeld', name: 'Gengæld', branch: 'vogter', tier: 2, kind: 'passive',
+    id: 'gengaeld', name: 'Gengældelse', branch: 'vogter', tier: 2, kind: 'passive',
     maxRank: 5, reqLevel: 6, requires: ['haerdet'],
-    grants: { weaponDamage: 0.02, maxLife: 0.015 },
-    text: 'Du slår igen, hårdere: +2% våbenskade og +1,5% liv pr. rang.',
+    grants: { weaponDamage: 0.02, maxLife: 0.02 },
+    text: 'Du slår igen, hårdere: +2% våbenskade og +2% liv pr. rang.',
   },
   {
     id: 'stenhud', name: 'Stenhud', branch: 'vogter', tier: 2, kind: 'active',
     ability: 'stenhud', maxRank: 5, reqLevel: 6, requires: ['haerdet'],
     text: 'Din hud bliver til sten et stykke tid.',
-    synergies: [{ id: 'haerdet', per: 0.055 }],
+    synergies: [{ id: 'haerdet', per: 0.05 }],
   },
   {
     id: 'livskraft', name: 'Livskraft', branch: 'vogter', tier: 3, kind: 'passive',
-    maxRank: 5, reqLevel: 12, requires: ['forbinding', 'stenhud'],
-    grants: { healing: 0.08, regen: 0.35 },
-    text: 'Kroppen læger sig selv: +8% helbredelse og +0,35 liv i sekundet pr. rang.',
+    maxRank: 5, reqLevel: 12, requires: ['stenhud'],
+    grants: { healing: 0.08, regen: 1 },
+    text: 'Kroppen læger sig selv: +8% helbredelse og +1 liv i sekundet pr. rang.',
   },
 ];
 
@@ -145,20 +145,42 @@ export function pointsLeft(level, ranks) {
   return pointsForLevel(level) - spentPoints(ranks);
 }
 
-/** Why you cannot put a point here — null when you can. */
+/** Why you cannot put a point here — null when you can.
+ *  Returns { code, text }: branch on `code`, show `text`. Never branch on the
+ *  text, which is Danish and will be reworded. */
 export function blockedReason(node, level, ranks) {
   const rank = ranks[node.id] || 0;
-  if (rank >= node.maxRank) return 'Maks rang';
-  if (level < node.reqLevel) return `Kræver niveau ${node.reqLevel}`;
-  for (const req of node.requires) {
-    if (!(ranks[req] > 0)) return `Kræver ${NODE_BY_ID[req].name}`;
+  if (rank >= node.maxRank) return { code: 'maxed', text: 'Højeste rang' };
+  if (level < node.reqLevel) {
+    return { code: 'level', text: `Kræver niveau ${node.reqLevel}` };
   }
-  if (pointsLeft(level, ranks) <= 0) return 'Ingen point tilbage';
+  for (const req of node.requires) {
+    if (!(ranks[req] > 0)) {
+      return { code: 'requires', text: `Kræver ${NODE_BY_ID[req].name}` };
+    }
+  }
+  if (pointsLeft(level, ranks) <= 0) {
+    return { code: 'nopoints', text: 'Ingen evnepoint tilbage' };
+  }
   return null;
 }
 
 export function canSpend(node, level, ranks) {
   return blockedReason(node, level, ranks) === null;
+}
+
+/** Could you ever put a point here, if you had one and were high enough?
+ *  Used to decide whether to grey a node out — running out of points is not a
+ *  reason to hide a skill you have already earned the right to take. */
+export function isReachable(node, level, ranks) {
+  const why = blockedReason(node, level, ranks);
+  return !why || why.code === 'nopoints' || why.code === 'maxed';
+}
+
+/** The skills this one quietly makes stronger — the other half of a synergy,
+ *  which is otherwise only visible from the far end. */
+export function feeds(nodeId) {
+  return NODES.filter(n => n.synergies?.some(sy => sy.id === nodeId));
 }
 
 /* --------------------------- the numbers --------------------------- */
@@ -200,26 +222,47 @@ export function unlockedActives(ranks) {
   return NODES.filter(n => n.kind === 'active' && (ranks[n.id] || 0) > 0);
 }
 
-/** A readable breakdown for the tooltip. */
+/** How much a passive is giving you right now, as readable Danish. */
+const GRANT_LABEL = {
+  weaponDamage: ['% våbenskade', 100], lifesteal: ['% livssug', 100],
+  moveSpeed: ['% fart', 100], attackSpeed: ['% angrebstempo', 100],
+  crit: ['% kritisk chance', 100], maxLife: ['% liv', 100],
+  healing: ['% helbredelse', 100], regen: [' liv i sekundet', 1],
+};
+
+/** A readable breakdown for the tooltip, as { body, power, synergies, feeds }. */
 export function describe(node, ranks, level) {
   const rank = ranks[node.id] || 0;
-  const lines = [node.text];
+  const out = { body: node.text, power: null, synergies: [], feeds: [] };
+
   if (node.kind === 'active') {
     const now = skillPower(node.id, ranks);
     const next = rank < node.maxRank
       ? rankMultiplier(rank + 1) * synergyMultiplier(node, ranks) : null;
-    lines.push(rank > 0
-      ? `Styrke: ${(now * 100).toFixed(0)}%${next ? ` → ${(next * 100).toFixed(0)}%` : ''}`
-      : `Styrke ved rang 1: ${(synergyMultiplier(node, ranks) * 100).toFixed(0)}%`);
-    if (node.synergies) {
-      for (const syn of node.synergies) {
-        const other = NODE_BY_ID[syn.id];
-        const r = ranks[syn.id] || 0;
-        lines.push(`↳ ${other.name}: +${(syn.per * 100).toFixed(0)}% pr. rang (nu ${r} = +${(r * syn.per * 100).toFixed(0)}%)`);
-      }
-    }
+    out.power = rank > 0
+      ? `Styrke ${(now * 100).toFixed(0)}%${next ? ` → ${(next * 100).toFixed(0)}% ved næste rang` : ''}`
+      : `Styrke ${(synergyMultiplier(node, ranks) * 100).toFixed(0)}% ved første rang`;
+  } else if (node.grants && rank > 0) {
+    out.power = 'Nu: ' + Object.entries(node.grants).map(([key, per]) => {
+      const [label, mul] = GRANT_LABEL[key] || ['', 1];
+      const val = n => +(per * n * mul).toFixed(2);
+      return `+${val(rank)}${label}` + (rank < node.maxRank ? ` → +${val(rank + 1)}` : '');
+    }).join(', ');
   }
-  return lines;
+
+  // what feeds this skill …
+  for (const sy of node.synergies || []) {
+    const other = NODE_BY_ID[sy.id];
+    const r = ranks[sy.id] || 0;
+    out.synergies.push({
+      id: sy.id, name: other.name, per: sy.per, rank: r,
+      text: `${other.name}: +${Math.round(sy.per * 100)}% pr. rang`
+        + (r > 0 ? ` (nu ${r} = +${Math.round(r * sy.per * 100)}%)` : ''),
+    });
+  }
+  // … and what this skill feeds, which is invisible from here otherwise
+  out.feeds = feeds(node.id).map(n => n.name);
+  return out;
 }
 
 /* ------------------------------ the bar ------------------------------ */

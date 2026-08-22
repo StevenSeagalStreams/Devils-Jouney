@@ -1,7 +1,7 @@
 import { drawItemIcon, statLines, itemScore, STAT_LABEL } from './items.js';
 import { ABILITIES, ABILITY_BY_ID, abilityPower, drawAbilityIcon, drawPassiveIcon, BAR_SLOTS } from './abilities.js';
-import { BRANCHES, NODES, NODE_BY_ID, blockedReason, describe, skillPower,
-         synergyMultiplier, rankMultiplier, pointsLeft, spentPoints, passiveTotals } from './skilltree.js';
+import { BRANCHES, NODES, NODE_BY_ID, blockedReason, isReachable, describe, skillPower,
+         synergyMultiplier, rankMultiplier, pointsLeft, spentPoints } from './skilltree.js';
 
 const $ = sel => document.querySelector(sel);
 
@@ -43,6 +43,7 @@ export class UI {
         <div class="rank"></div>
         <span class="key">${i + 1}</span>`;
       el.addEventListener('click', () => this.game.useAbility(i));
+      el.addEventListener('contextmenu', e => { e.preventDefault(); this.game.clearSlot(i); });
       el.addEventListener('mousemove', e => {
         if (document.pointerLockElement) { this.tooltip.style.display = 'none'; return; }
         const id = this.game.state.bar[i];
@@ -65,21 +66,47 @@ export class UI {
     const node = NODE_BY_ID[nodeId];
     const rank = s.ranks[nodeId] || 0;
     const branch = BRANCHES.find(b => b.id === node.branch);
-    const head = `
+    const active = node.kind === 'active';
+    const d = describe(node, s.ranks, s.level);
+    const why = blockedReason(node, s.level, s.ranks);
+
+    let html = `
       <div class="tt-name" style="color:${rank ? branch.color : '#8a8a8a'}">${node.name}</div>
-      <div class="tt-type">${branch.name} · ${node.kind === 'active' ? 'evne' : 'passiv'} · rang ${rank}/${node.maxRank}</div>`;
-    const lines = describe(node, s.ranks, s.level).map(l => `<div class="tt-stat">${l}</div>`).join('');
-    let foot = '';
-    if (node.kind === 'active') {
+      <div class="tt-type">${branch.name} · ${active ? 'aktiv evne' : 'passiv evne'} · rang ${rank}/${node.maxRank}</div>`;
+    // the reason you cannot take it belongs at the top, not buried at the bottom
+    if (why) {
+      html += `<div class="tt-block ${why.code === 'maxed' ? 'good' : 'bad'}">${why.text}</div>`;
+    }
+
+    if (active) {
+      // the concrete line says everything node.text does, with the number in it
       const ability = ABILITY_BY_ID[node.ability];
       const mult = skillPower(nodeId, s.ranks) || rankMultiplier(1) * synergyMultiplier(node, s.ranks);
-      const power = abilityPower(ability, mult, this.game.totals());
-      foot = `<div class="tt-stat">${ability.text(power)}</div>
-        <div class="tt-cmp">${ability.stamina ? `${ability.stamina} udholdenhed · ` : ''}${ability.cooldown}s pause</div>`;
+      html += `<div class="tt-stat">${ability.text(abilityPower(ability, mult, this.game.totals()))}</div>`;
+    } else {
+      html += `<div class="tt-stat">${d.body}</div>`;
     }
-    const why = blockedReason(node, s.level, s.ranks);
-    if (why) foot += `<div class="tt-cmp bad">${why}</div>`;
-    return head + lines + foot;
+    if (d.power) html += `<div class="tt-power">${d.power}</div>`;
+    if (active) {
+      const a = ABILITY_BY_ID[node.ability];
+      html += `<div class="tt-cmp">${a.stamina ? `${a.stamina} udholdenhed · ` : ''}${a.cooldown} sek. pause</div>`;
+    }
+
+    // both ends of every synergy — the far end is invisible from here otherwise
+    const taken = d.synergies.filter(sy => sy.rank > 0);
+    const rest = d.synergies.filter(sy => sy.rank === 0);
+    if (taken.length || rest.length) {
+      html += '<div class="tt-syn">';
+      for (const sy of taken) html += `<div class="on">↳ ${sy.text}</div>`;
+      if (rest.length) {
+        html += `<div>↳ Bliver også stærkere af: ${rest.map(sy => sy.name).join(', ')}</div>`;
+      }
+      html += '</div>';
+    }
+    if (d.feeds.length) {
+      html += `<div class="tt-syn"><div>↳ Styrker: ${d.feeds.join(', ')}</div></div>`;
+    }
+    return html;
   }
 
   showAbilityTip(nodeId, x, y) {
@@ -211,7 +238,7 @@ export class UI {
     $('#skills-reset').addEventListener('click', () => {
       if (!spentPoints(this.game.state.ranks)) return;
       this.game.resetTree();
-      this.toast('Alle evnepoint er givet tilbage', 1600);
+      this.toast('Du har fået alle dine evnepoint tilbage', 1800);
     });
 
     // three columns, one per branch, nodes stacked by tier
@@ -231,7 +258,9 @@ export class UI {
         for (const node of NODES.filter(n => n.branch === branch.id && n.tier === tier)) {
           const el = document.createElement('div');
           el.className = 'skill-node';
+          el.className = `skill-node ${node.kind}`;
           el.innerHTML = `<div class="sn-icon"><canvas width="96" height="96"></canvas>
+              <div class="sn-kind">${node.kind === 'active' ? 'evne' : 'passiv'}</div>
               <div class="sn-rank"><b>0</b>/${node.maxRank}</div></div>
             <div class="sn-name">${node.name}</div>
             <div class="sn-pips">${'<i></i>'.repeat(node.maxRank)}</div>`;
@@ -247,7 +276,7 @@ export class UI {
         col.appendChild(row);
       }
       cols.appendChild(col);
-      this.skillCols.push(col);
+      this.skillCols.push({ col, branch: branch.id });
     }
 
     // the eight slots, mirrored from the hotbar
@@ -258,6 +287,7 @@ export class UI {
       const el = document.createElement('div');
       el.className = 'slot ability empty';
       el.innerHTML = `<canvas class="icon" width="96" height="96"></canvas>
+        <div class="rank"></div>
         <span class="key">${i + 1}</span>`;
       el.addEventListener('click', () => {
         this.pickedSlot = this.pickedSlot === i ? -1 : i;
@@ -277,21 +307,31 @@ export class UI {
   /** A click on a node either assigns it to a waiting slot, or spends a point. */
   clickNode(node) {
     const s = this.game.state;
-    if (this.pickedSlot >= 0 && node.kind === 'active' && s.ranks[node.id] > 0) {
-      this.game.assignBar(this.pickedSlot, node.id);
-      this.pickedSlot = -1;
+    // While a slot is armed, a click can only ever mean "put this here" — it must
+    // not quietly spend a point on whatever the player happened to hit.
+    if (this.pickedSlot >= 0) {
+      if (node.kind !== 'active') {
+        this.toast('Passive evner kan ikke lægges på bjælken', 1500);
+      } else if (!(s.ranks[node.id] > 0)) {
+        this.toast('Du har ikke lært den evne endnu', 1500);
+      } else {
+        this.game.assignBar(this.pickedSlot, node.id);
+        this.pickedSlot = -1;
+      }
       this.renderSkills();
       return;
     }
     const why = blockedReason(node, s.level, s.ranks);
-    if (why) { this.toast(why, 1400); return; }
+    if (why) { this.toast(why.text, 1500); return; }
     this.game.spendPoint(node.id);
+    // the tooltip is the whole point of the click — do not leave it a rank behind
+    this.tooltip.innerHTML = this.skillTipHtml(node.id);
   }
 
   /** Faint lines from a skill to the ones it needs. Only measurable once the
       panel is on screen, so it is redrawn every time the panel opens. */
   drawSkillLinks() {
-    for (const col of this.skillCols) {
+    for (const { col, branch } of this.skillCols) {
       const svg = col.querySelector('.skill-links');
       const base = col.getBoundingClientRect();
       if (!base.width) return;                       // panel is hidden
@@ -300,14 +340,17 @@ export class UI {
       svg.setAttribute('height', base.height);
       const parts = [];
       for (const node of NODES) {
-        if (!this.nodeEls[node.id] || !node.requires.length) continue;
+        if (node.branch !== branch || !this.nodeEls[node.id] || !node.requires.length) continue;
         const to = this.nodeEls[node.id].querySelector('.sn-icon').getBoundingClientRect();
         for (const req of node.requires) {
           const from = this.nodeEls[req]?.querySelector('.sn-icon').getBoundingClientRect();
           if (!from) continue;
           const lit = (this.game.state.ranks[req] || 0) > 0 ? ' class="on"' : '';
-          parts.push(`<line${lit} x1="${from.x + from.width / 2 - base.x}" y1="${from.bottom - base.y}"`
-            + ` x2="${to.x + to.width / 2 - base.x}" y2="${to.y - base.y}" />`);
+          const x1 = from.x + from.width / 2 - base.x, y1 = from.bottom - base.y;
+          const x2 = to.x + to.width / 2 - base.x, y2 = to.y - base.y;
+          // sit the horizontal run just above the target, clear of the row's labels
+          const mid = y1 + (y2 - y1) * 0.82;
+          parts.push(`<path${lit} d="M ${x1} ${y1} V ${mid} H ${x2} V ${y2}" />`);
         }
       }
       svg.innerHTML = parts.join('');
@@ -326,7 +369,7 @@ export class UI {
       const el = this.nodeEls[node.id];
       const rank = s.ranks[node.id] || 0;
       const why = blockedReason(node, s.level, s.ranks);
-      const reachable = !why || why === 'Ingen point tilbage' || why === 'Maks rang';
+      const reachable = isReachable(node, s.level, s.ranks);
       const branch = BRANCHES.find(b => b.id === node.branch);
       const stamp = `${rank}:${reachable}`;
       if (el.dataset.stamp !== stamp) {
@@ -338,6 +381,7 @@ export class UI {
       }
       el.classList.toggle('locked', !rank && !reachable);
       el.classList.toggle('taken', rank > 0);
+      el.classList.toggle('assignable', node.kind === 'active' && rank > 0);
       el.classList.toggle('ready', !why && left > 0);
       el.classList.toggle('maxed', rank >= node.maxRank);
       el.querySelector('.sn-rank b').textContent = rank;
@@ -349,6 +393,7 @@ export class UI {
       const id = s.bar[i];
       const node = id ? NODE_BY_ID[id] : null;
       el.classList.toggle('picked', this.pickedSlot === i);
+      el.querySelector('.rank').textContent = node ? (s.ranks[id] || 0) : '';
       if (this.skillBarDrawn[i] === id) continue;
       this.skillBarDrawn[i] = id;
       const canvas = el.querySelector('canvas');
@@ -362,10 +407,12 @@ export class UI {
         el.style.setProperty('--rare', '#333');
       }
     }
+    this.skills.classList.toggle('picking', this.pickedSlot >= 0);
     this.drawSkillLinks();
-    $('#skill-hint').textContent = this.pickedSlot >= 0
-      ? `Plads ${this.pickedSlot + 1} valgt — klik på en evne for at lægge den der.`
-      : 'Klik på en evne for at bruge et point. Klik på en plads herunder og så på en evne for at flytte den. Højreklik på en plads for at tømme den.';
+    $('#skill-hint').innerHTML = this.pickedSlot >= 0
+      ? `Plads <b>${this.pickedSlot + 1}</b> er valgt — klik nu på den evne, du vil lægge der.`
+      : 'Klik på en evne for at sætte et point i den.<br>'
+        + 'Klik på en plads herunder, og så på en evne, for at lægge den der. Højreklik tømmer en plads.';
   }
 
   toggleSkills(force) {
@@ -456,7 +503,17 @@ export class UI {
       <div>${STAT_LABEL.smidighed} <b>${t.smidighed}</b></div>
       <div>${STAT_LABEL.styrke} <b>${t.styrke}</b></div>
       <div>Kritisk <b>${Math.round(t.crit * 100)}%</b></div>
-      <div>Evnepoint <b>${t.skillPoints}</b></div>`;
+      <div>Evnepoint tilbage <b>${t.skillPoints}</b></div>`;
+  }
+
+  /** A banked skill point should never be invisible — it is the one thing a
+   *  new player forgets they have. */
+  setSkillNudge(left) {
+    if (this.nudgeLeft === left) return;
+    this.nudgeLeft = left;
+    const el = $('#skill-nudge');
+    el.classList.toggle('hidden', left <= 0);
+    if (left > 0) $('#nudge-count').textContent = left;
   }
 
   setBars(hpPct, staPct, xpPct, level) {
@@ -593,9 +650,10 @@ export class UI {
     this.setGold(game.state.gold);
   }
 
-  toast(msg, ms = 1600) {
+  toast(msg, ms = 1600, kind = '') {
     const el = $('#toast');
     el.textContent = msg;
+    el.className = kind;                 // a level-up should not look like a hint
     el.classList.add('show');
     clearTimeout(this._toastT);
     this._toastT = setTimeout(() => el.classList.remove('show'), ms);

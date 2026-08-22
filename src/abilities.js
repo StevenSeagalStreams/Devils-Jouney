@@ -13,16 +13,16 @@ export const ABILITIES = [
   {
     id: 'hvirvelvind', name: 'Hvirvelvind',
     cooldown: 9, stamina: 14, kind: 'aoe',
-    power: 1.1, range: 3.6,
+    power: 1.1, range: 4,
     color: '#bfe3ff',
-    text: p => `Snurrer rundt og rammer alt indenfor 3,6 m for ${p} skade.`,
+    text: p => `Snurrer rundt og rammer alt inden for 4 m og gør ${p} i skade.`,
   },
   {
     id: 'stormlob', name: 'Stormløb',
     cooldown: 8, stamina: 18, kind: 'charge',
     power: 1.3, range: 3.0, dash: 6,
     color: '#ffd479',
-    text: p => `Styrter 6 m frem og slår for ${p} skade med et skub.`,
+    text: p => `Styrter 6 m frem, skubber til og giver ${p} i skade.`,
   },
   {
     id: 'forbinding', name: 'Forbinding',
@@ -43,7 +43,7 @@ export const ABILITIES = [
     cooldown: 10, stamina: 20, kind: 'bolt',
     power: 1.7, range: 11,
     color: '#ff8a3c',
-    text: p => `Sender ild mod en fjende op til 11 m væk for ${p} skade.`,
+    text: p => `Sender ild mod en fjende op til 11 m væk og gør ${p} i skade.`,
   },
   {
     id: 'kampraseri', name: 'Kampraseri',
@@ -55,9 +55,9 @@ export const ABILITIES = [
   {
     id: 'dommedag', name: 'Dommedag',
     cooldown: 30, stamina: 30, kind: 'aoe',
-    power: 1.6, range: 6.5,
+    power: 1.6, range: 7,
     color: '#c07bff',
-    text: p => `Slår jorden itu: ${p} skade på alt indenfor 6,5 m.`,
+    text: p => `Slår jorden itu: ${p} skade på alt inden for 7 m.`,
   },
 ];
 
@@ -99,9 +99,14 @@ export function drawAbilityIcon(canvas, ability, locked) {
   g.lineWidth = 6;
 
   switch (ability.id) {
-    case 'hug':                                  // a diagonal slash
-      g.beginPath(); g.moveTo(-24, 22); g.lineTo(22, -24); g.stroke();
-      g.beginPath(); g.moveTo(6, -26); g.lineTo(26, -28); g.lineTo(24, -8); g.closePath(); g.fill();
+    case 'hug':                                  // a sword, mid-swing
+      g.lineWidth = 7;
+      g.beginPath(); g.moveTo(-22, 26); g.lineTo(18, -14); g.stroke();     // blade
+      g.lineWidth = 6;
+      g.beginPath(); g.moveTo(6, -26); g.lineTo(30, -2); g.stroke();       // crossguard
+      g.beginPath(); g.arc(-26, 30, 5, 0, Math.PI * 2); g.fill();          // pommel
+      g.lineWidth = 4;                                                     // the arc it cuts
+      g.beginPath(); g.arc(-4, 4, 32, -Math.PI * 0.62, -Math.PI * 0.08); g.stroke();
       break;
     case 'hvirvelvind':                          // a spiral
       g.lineWidth = 5;
@@ -118,9 +123,16 @@ export function drawAbilityIcon(canvas, ability, locked) {
       g.lineWidth = 5;
       for (const y of [-12, 0, 12]) { g.beginPath(); g.moveTo(-28, y); g.lineTo(-14, y); g.stroke(); }
       break;
-    case 'forbinding': {                         // a cross
-      g.fillRect(-8, -26, 16, 52);
-      g.fillRect(-26, -8, 52, 16);
+    case 'forbinding': {                         // a bandage, wound and tied
+      g.save();
+      g.rotate(-Math.PI / 5);
+      g.beginPath(); g.roundRect(-30, -9, 60, 18, 6); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,.38)'; g.lineWidth = 3.5;
+      for (const x of [-12, 0, 12]) { g.beginPath(); g.moveTo(x, -9); g.lineTo(x - 5, 9); g.stroke(); }
+      g.restore();
+      g.fillStyle = tint;
+      g.beginPath(); g.arc(-19, -17, 6, 0, Math.PI * 2); g.fill();          // the knot
+      g.beginPath(); g.arc(19, 17, 6, 0, Math.PI * 2); g.fill();
       break;
     }
     case 'stenhud': {                            // a shield
@@ -132,19 +144,30 @@ export function drawAbilityIcon(canvas, ability, locked) {
     }
     case 'ildstod': {                            // a flame
       g.beginPath();
-      g.moveTo(0, -28);
-      g.bezierCurveTo(16, -10, 22, 4, 12, 18);
-      g.bezierCurveTo(6, 26, -6, 26, -12, 18);
-      g.bezierCurveTo(-22, 4, -14, -8, 0, -28);
+      g.moveTo(10, -30);                                                    // a licking tip
+      g.bezierCurveTo(10, -14, 22, -6, 16, 10);
+      g.bezierCurveTo(12, 24, -6, 28, -14, 16);
+      g.bezierCurveTo(-22, 4, -10, -4, -4, -14);
+      g.bezierCurveTo(-1, -20, 4, -24, 10, -30);
       g.closePath(); g.fill();
+      g.fillStyle = 'rgba(0,0,0,.28)';                                      // the hot core
+      g.beginPath();
+      g.moveTo(4, -10); g.bezierCurveTo(10, 2, 6, 14, -2, 16);
+      g.bezierCurveTo(-10, 12, -8, 0, 4, -10);
+      g.closePath(); g.fill();
+      g.fillStyle = tint;
       break;
     }
     case 'kampraseri': {                         // a clenched fist
       g.beginPath();
-      g.moveTo(-18, -10); g.lineTo(16, -18); g.lineTo(22, 6); g.lineTo(6, 24); g.lineTo(-16, 16);
+      g.beginPath();                                                        // knuckles
+      g.moveTo(-16, -4);
+      for (const x of [-8, 2, 12]) { g.arc(x, -10, 7, Math.PI, 0); }
+      g.lineTo(20, 8); g.lineTo(4, 24); g.lineTo(-16, 16);
       g.closePath(); g.fill();
-      g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 4;
-      for (const y of [-6, 2, 10]) { g.beginPath(); g.moveTo(-10, y); g.lineTo(14, y - 4); g.stroke(); }
+      g.beginPath(); g.roundRect(-24, -2, 12, 18, 5); g.fill();              // thumb
+      g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 3.5;
+      for (const x of [-8, 2, 12]) { g.beginPath(); g.moveTo(x, -3); g.lineTo(x, 8); g.stroke(); }
       break;
     }
     case 'dommedag': {                           // a falling star over cracked ground
@@ -198,10 +221,17 @@ export function drawPassiveIcon(canvas, id, color, locked) {
       g.bezierCurveTo(-14, 20, -14, 12, 0, -2);
       g.closePath(); g.fill();
       break;
-    case 'fodfaeste':                            // a boot with a wing
-      g.beginPath(); g.moveTo(-10, -20); g.lineTo(4, -20); g.lineTo(6, 8); g.lineTo(24, 16); g.lineTo(24, 26); g.lineTo(-10, 26); g.closePath(); g.fill();
-      g.lineWidth = 5;
-      for (const y of [-14, -4]) { g.beginPath(); g.moveTo(-30, y); g.lineTo(-16, y); g.stroke(); }
+    case 'fodfaeste':                            // a boot with a feather on it
+      g.beginPath();
+      g.moveTo(-8, -6); g.lineTo(6, -6); g.lineTo(8, 10); g.lineTo(24, 17); g.lineTo(24, 27);
+      g.lineTo(-8, 27); g.closePath(); g.fill();
+      g.beginPath();                                                       // the feather
+      g.moveTo(-4, -30);
+      g.bezierCurveTo(14, -26, 16, -12, 2, -12);
+      g.bezierCurveTo(-8, -12, -10, -22, -4, -30);
+      g.closePath(); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 3;
+      g.beginPath(); g.moveTo(-3, -29); g.lineTo(2, -13); g.stroke();
       break;
     case 'praecision':                           // a target
       g.lineWidth = 6;
@@ -212,11 +242,17 @@ export function drawPassiveIcon(canvas, id, color, locked) {
     case 'haerdet':                              // stacked plates
       for (const y of [-20, -2, 16]) { g.beginPath(); g.roundRect(-24, y, 48, 12, 5); g.fill(); }
       break;
-    case 'gengaeld':                             // two crossed strokes
-      g.lineWidth = 8;
-      g.beginPath(); g.moveTo(-22, -22); g.lineTo(22, 22); g.stroke();
-      g.beginPath(); g.moveTo(22, -22); g.lineTo(-22, 22); g.stroke();
+    case 'gengaeld': {                           // two crossed swords
+      g.lineWidth = 7;
+      for (const dir of [1, -1]) {
+        g.beginPath(); g.moveTo(dir * -20, 22); g.lineTo(dir * 18, -20); g.stroke();
+        g.lineWidth = 5;
+        g.beginPath(); g.moveTo(dir * 6, -26); g.lineTo(dir * 26, -8); g.stroke();   // guard
+        g.beginPath(); g.arc(dir * -24, 26, 4.5, 0, Math.PI * 2); g.fill();          // pommel
+        g.lineWidth = 7;
+      }
       break;
+    }
     case 'livskraft': {                          // a heart with a pulse line
       g.beginPath();
       g.moveTo(0, 24);

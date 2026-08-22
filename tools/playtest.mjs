@@ -286,7 +286,7 @@ const tree = await page.evaluate(() => {
   d.learn('hug', 1);
   const bare = d.skillPower('hug');
   d.learn('skarp', 5);
-  out.synergy = +(d.skillPower('hug') / bare).toFixed(3);  // 1 + 5 * 0.045
+  out.synergy = +(d.skillPower('hug') / bare).toFixed(3);  // 1 + 5 * 0.05
 
   // ranks scale it too
   d.forget(); d.learn('hug', 1);
@@ -299,9 +299,9 @@ const tree = await page.evaluate(() => {
   const base = d.totals();
   d.learn('haerdet', 5); d.learn('skarp', 5); d.learn('praecision', 5); d.learn('fodfaeste', 5);
   const buffed = d.totals();
-  out.life = +(buffed.maxHp / base.maxHp).toFixed(3);      // 1 + 5 * 0.045
+  out.life = +(buffed.maxHp / base.maxHp).toFixed(3);      // 1 + 5 * 0.05
   out.dmg = +(buffed.damage / base.damage).toFixed(2);     // 1 + 5 * 0.04
-  out.crit = +(buffed.crit - base.crit).toFixed(3);        // 5 * 0.025
+  out.crit = +(buffed.crit - base.crit).toFixed(3);        // 5 * 0.03
   out.speed = buffed.speed > base.speed && buffed.attackSpeed > base.attackSpeed;
 
   // Blodtørst returns life on a hit
@@ -353,11 +353,11 @@ check('a skill without its prerequisite cannot be taken', tree.prereq);
 check('taking the prerequisite opens the next tier', tree.first && tree.thenTier2 && tree.thenTier3);
 check('you cannot spend points you do not have', tree.budget === 3 && !tree.overspent, `spent ${tree.budget}`);
 check('ranks cap at five', tree.maxRank === 5);
-check('a synergy skill feeds its partner', Math.abs(tree.synergy - 1.225) < 0.005, `x${tree.synergy}`);
+check('a synergy skill feeds its partner', Math.abs(tree.synergy - 1.25) < 0.005, `x${tree.synergy}`);
 check('ranks scale a skill', Math.abs(tree.rankGain - 1.72) < 0.005, `x${tree.rankGain}`);
-check('passive life reaches the character sheet', Math.abs(tree.life - 1.225) < 0.01, `x${tree.life}`);
+check('passive life reaches the character sheet', Math.abs(tree.life - 1.25) < 0.01, `x${tree.life}`);
 check('passive damage reaches the character sheet', tree.dmg > 1.15 && tree.dmg < 1.3, `x${tree.dmg}`);
-check('passive crit reaches the character sheet', Math.abs(tree.crit - 0.125) < 0.001, `+${tree.crit}`);
+check('passive crit reaches the character sheet', Math.abs(tree.crit - 0.15) < 0.001, `+${tree.crit}`);
 check('passive speed reaches the character sheet', tree.speed);
 check('lifesteal returns life on a hit', tree.lifesteal);
 check('resetting hands every point back', tree.reset);
@@ -380,7 +380,7 @@ const guard = await page.evaluate(() => {
   const crowd = d.monsters.filter(m => !m.dead).slice(0, 6);
   for (const m of crowd) { m.hp = m.maxHp = 1e9; }
   d.state.cooldowns = {}; d.state.stamina = 300;
-  for (const m of crowd) d.damageMonster(m, 20000, false);   // one swing, six targets
+  d.hitMany(crowd, 20000);                                   // one swing, six targets
   out.drunk = +((d.state.hp - 1) / t.maxHp).toFixed(3);
   out.targets = crowd.length;
 
@@ -412,6 +412,74 @@ const guard = await page.evaluate(() => {
 check('one swing cannot drink a whole health bar', guard.drunk <= 0.13,
   `${Math.round(guard.drunk * 100)}% of max life off ${guard.targets} targets`);
 check('every rank of every skill buys something', guard.dead.length === 0, guard.dead.join(', '));
+
+/* ------------------ things the reviewers caught ------------------ */
+const caught = await page.evaluate(() => {
+  const d = window.__dj;
+  const out = {};
+  d.forget(); d.state.level = 30; d.state.dead = false; d.state.running = true;
+
+  // a respec you pay for in cooldowns is not free
+  d.learn('haerdet', 1); d.learn('stenhud', 3);
+  d.state.stamina = 300; d.state.cooldowns = {};
+  d.useAbility(d.bar.indexOf('stenhud'));
+  d.resetTree();
+  out.freeRespec = Object.values(d.state.cooldowns).every(v => !v) && !d.state.buffs.shield;
+
+  // ranking a skill up must not undo a slot you cleared on purpose
+  d.forget();
+  d.spendPoint('hug');
+  d.clearSlot(d.bar.indexOf('hug'));
+  d.spendPoint('hug');
+  out.staysCleared = !d.bar.includes('hug');
+
+  // the debug hook must not blow up on a passive
+  d.learn('skarp', 3);
+  try { out.passiveValue = d.abilityValue('skarp'); } catch (e) { out.passiveValue = 'THREW'; }
+  out.rankZero = d.learn('gengaeld', 0) === false;
+
+  d.forget();
+  d.state.level = 1; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
+  return out;
+});
+check('resetting the tree costs no cooldowns', caught.freeRespec);
+check('ranking up leaves a cleared slot cleared', caught.staysCleared);
+check('a passive has no ability value, and does not throw', caught.passiveValue === 0);
+check('rank zero is not a learned skill', caught.rankZero);
+
+// Stormløb dashes 6m — it must not carry you through the crypt
+await page.evaluate(() => window.__dj.setZone('dungeon'));
+await gameWait(0.4);
+const dash = await page.evaluate(() => {
+  const d = window.__dj;
+  d.forget(); d.state.level = 20; d.learn('stormlob', 1);
+  const slot = d.bar.indexOf('stormlob');
+  let tries = 0, clips = 0;
+  for (let a = 0; a < 64; a++) {
+    for (const cell of d.dungeon.posts.slice(0, 6)) {
+      d.player.pos.set(cell.pos.x, 0, cell.pos.z);
+      if (d.mazeBlocked(d.player.pos.x, d.player.pos.z, 0.5)) continue;
+      d.player.yaw = a / 64 * Math.PI * 2;
+      const sx = d.player.pos.x, sz = d.player.pos.z;
+      d.state.cooldowns = {}; d.state.stamina = 300;
+      if (!d.useAbility(slot)) continue;
+      tries++;
+      // did the dash cross stone on its way?
+      const steps = 24;
+      for (let i = 1; i < steps; i++) {
+        const x = sx + (d.player.pos.x - sx) * i / steps;
+        const z = sz + (d.player.pos.z - sz) * i / steps;
+        if (d.mazeBlocked(x, z, 0.35)) { clips++; break; }
+      }
+    }
+  }
+  d.forget(); d.state.level = 1;
+  return { tries, clips };
+});
+check('a dash cannot carry you through a wall', dash.clips === 0,
+  `${dash.clips} of ${dash.tries} dashes crossed stone`);
+await page.evaluate(() => window.__dj.setZone('overworld'));
+await gameWait(0.4);
 
 /* -------------------------------- loot -------------------------------- */
 const hilly = await page.evaluate(() => {

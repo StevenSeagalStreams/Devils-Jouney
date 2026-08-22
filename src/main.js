@@ -867,8 +867,9 @@ const game = {
     const node = NODE_BY_ID[nodeId];
     if (!node || !canSpend(node, state.level, state.ranks)) return false;
     state.ranks[nodeId] = (state.ranks[nodeId] || 0) + 1;
-    // a skill you just learned should be ready to press
-    if (node.kind === 'active') autoAssign(state.bar, nodeId);
+    // a skill you just learned should be ready to press — but only on the first
+    // rank, so ranking up never undoes a slot you cleared on purpose
+    if (node.kind === 'active' && state.ranks[nodeId] === 1) autoAssign(state.bar, nodeId);
     game.clampVitals();
     ui.renderSkills();
     ui.renderStats();
@@ -879,6 +880,7 @@ const game = {
     state.ranks = {};
     state.bar = new Array(BAR_SLOTS).fill(null);
     state.buffs.shield = state.buffs.rage = 0;
+    state.cooldowns = {};                         // trying a build really is free
     game.clampVitals();
     ui.renderSkills();
     ui.renderStats();
@@ -976,7 +978,9 @@ const game = {
 };
 
 const ui = new UI(game);
-ui.onShopClose = () => { if (state.running && !ui.inventoryOpen) canvas.requestPointerLock?.(); };
+ui.onShopClose = () => {
+  if (state.running && !ui.inventoryOpen && !ui.skillsOpen) canvas.requestPointerLock?.();
+};
 
 /* --------------------------- combat helpers --------------------------- */
 const tmpV = new THREE.Vector3();
@@ -1033,7 +1037,7 @@ function gainXp(amount) {
     state.hp = totals().maxHp;
     state.stamina = totals().maxStamina;
     const left = pointsLeft(state.level, state.ranks);
-    ui.toast(`Niveau ${state.level} — ${left} evnepoint at bruge (K)`, 2400);
+    ui.toast(`Niveau ${state.level} — du har ${left} evnepoint tilbage. Tryk K.`, 2600, 'level');
     ui.floatText(`Niveau ${state.level}`, screenOf(player.pos, 2.4), 'xp');
     ui.renderStats();
     ui.renderSkills();
@@ -1062,8 +1066,8 @@ function damageMonster(m, amount, crit) {
     blocked ? 'loot' : crit ? 'crit' : 'dmg');
   // Blodtørst: a slice of what you dealt comes back. Capped per swing, because
   // one Dommedag into a crowd would otherwise be a full heal.
-  const t = totals();
-  if (t.lifesteal > 0 && !state.dead) {
+  const t = state.ranks.blodtorst && !state.dead ? totals() : null;
+  if (t && t.lifesteal > 0) {
     const room = t.maxHp * LIFESTEAL_CAP - lifestealThisHit;
     const back = Math.min(amount * t.lifesteal, Math.max(0, room));
     if (back >= 0.05) {
@@ -1274,11 +1278,22 @@ function useAbility(slot) {
     }
     case 'charge': {
       const dir = tmpFacing.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-      player.pos.addScaledVector(dir, ability.dash);
+      // Walk the dash rather than teleporting it, and stop at the first wall —
+      // a 6 m jump would otherwise carry you straight through the crypt.
+      const steps = 12, step = ability.dash / steps;
+      for (let i = 0; i < steps; i++) {
+        const nx = player.pos.x + dir.x * step, nz = player.pos.z + dir.z * step;
+        if (zone === 'dungeon' && mazeBlocked(nx, nz, 0.5)) break;
+        player.pos.x = nx; player.pos.z = nz;
+      }
       ringFx(player.pos.x, player.pos.z, ability.range, ability.color, 0.4);
       for (const m of monstersInRange(player.pos, ability.range)) {
         damageMonster(m, power, true);
-        m.pos.addScaledVector(dir, 2.2);        // shove it back
+        // shove it back, but never into the stone
+        const bx = m.pos.x + dir.x * 2.2, bz = m.pos.z + dir.z * 2.2;
+        if (!(zone === 'dungeon' && mazeBlocked(bx, bz, m.kind.bodyRadius || 0.6))) {
+          m.pos.x = bx; m.pos.z = bz;
+        }
         m.state = 'chase';
         m.atk = null;
         m.cooldown = Math.max(m.cooldown, 0.8);
@@ -1519,6 +1534,7 @@ function frame() {
   state.hp = Math.min(state.hp, t.maxHp);
   ui.renderAbilities();
   ui.renderBuffs(state.buffs);
+  ui.setSkillNudge(t.skillPoints);
   ui.setBars(
     THREE.MathUtils.clamp(state.hp / t.maxHp, 0, 1),
     THREE.MathUtils.clamp(state.stamina / t.maxStamina, 0, 1),
@@ -1577,6 +1593,7 @@ function toggleSkills() {
 }
 function respawn() {
   state.dead = false;
+  state.buffs.shield = state.buffs.rage = 0;      // you do not keep them through death
   camSnap = true;
   state.hp = totals().maxHp;
   state.stamina = totals().maxStamina;
@@ -1629,7 +1646,9 @@ window.__dj = {
   itemScore,
   kinds: KINDS,
   statsFor,
-  damageMonster,
+  /** Counts as its own swing, so the lifesteal cap behaves as it does in play. */
+  damageMonster: (m, amount, crit) => { beginSwing(); damageMonster(m, amount, crit); },
+  hitMany: (list, amount) => { beginSwing(); for (const m of list) damageMonster(m, amount, false); },
   get monster() { return nearestMonster() || monsters[0]; },
   get zone() { return zone; },
   setZone,
@@ -1647,6 +1666,7 @@ window.__dj = {
   spendPoint: id => game.spendPoint(id),
   resetTree: () => game.resetTree(),
   assignBar: (slot, id) => game.assignBar(slot, id),
+  clearSlot: slot => game.clearSlot(slot),
   skillPower: id => skillPower(id, state.ranks),
   passives: () => passiveTotals(state.ranks),
   pointsLeft: () => pointsLeft(state.level, state.ranks),
@@ -1655,14 +1675,14 @@ window.__dj = {
   /** What one press of a tree skill is currently worth, for the balance guards. */
   abilityValue(id) {
     const node = NODE_BY_ID[id];
-    const ability = ABILITY_BY_ID[node.ability];
-    return abilityPower(ability, skillPower(id, state.ranks), totals());
+    if (!node || node.kind !== 'active') return 0;
+    return abilityPower(ABILITY_BY_ID[node.ability], skillPower(id, state.ranks), totals());
   },
   spent: () => spentPoints(state.ranks),
   /** Test hook: hand out ranks without paying for them. */
   learn(id, rank = 1) {
     const node = NODE_BY_ID[id];
-    if (!node) return false;
+    if (!node || rank < 1) return false;
     state.ranks[id] = Math.min(node.maxRank, rank);
     if (node.kind === 'active') autoAssign(state.bar, id);
     game.clampVitals();
@@ -1673,6 +1693,7 @@ window.__dj = {
     state.ranks = {};
     state.bar = new Array(BAR_SLOTS).fill(null);
     state.buffs.shield = state.buffs.rage = 0;
+    state.cooldowns = {};
     ui.renderSkills();
   },
   forceAttack(kind) { const m = nearestMonster() || monsters[0]; if (m) { m.cooldown = 0; startAttack(m, kind); } },
