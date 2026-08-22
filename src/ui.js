@@ -1,4 +1,4 @@
-import { drawItemIcon, statLines, itemScore, STAT_LABEL } from './items.js';
+import { drawItemIcon, statLines, itemScore, STAT_LABEL, POTION, drawPotionIcon } from './items.js';
 import { ABILITIES, ABILITY_BY_ID, abilityPower, drawAbilityIcon, drawPassiveIcon, BAR_SLOTS } from './abilities.js';
 import { BRANCHES, NODES, NODE_BY_ID, blockedReason, isReachable, describe, skillPower,
          synergyMultiplier, rankMultiplier, pointsLeft, spentPoints } from './skilltree.js';
@@ -25,6 +25,7 @@ export class UI {
     this.prompt = $('#prompt');
     $('#shop-close').addEventListener('click', () => this.closeShop());
     this.buildHotbar();
+    this.buildPotion();
     this.bindPanel();
     this.buildSkills();
   }
@@ -58,6 +59,48 @@ export class UI {
     const eq = $('#equipped-slot');
     eq.querySelector('.key')?.remove();
     this.attachTip(eq, () => this.game.state.equipped.weapon);
+  }
+
+  /* ---------------- potions ---------------- */
+  buildPotion() {
+    const el = $('#potion-slot');
+    el.style.setProperty('--rare', POTION.color);
+    el.addEventListener('click', () => this.game.drinkPotion());
+    el.addEventListener('mousemove', e => {
+      if (document.pointerLockElement) { this.tooltip.style.display = 'none'; return; }
+      const t = this.game.totals();
+      this.tooltip.innerHTML = `
+        <div class="tt-name" style="color:${POTION.color}">${POTION.name}</div>
+        <div class="tt-type">consumable · key Q</div>
+        <div class="tt-stat">Drink to get ${Math.round(POTION.heal * 100)}% of your life back
+          — about ${Math.round(t.maxHp * POTION.heal)} right now.</div>
+        <div class="tt-cmp">${POTION.cooldown}s between drinks · you carry ${this.game.state.potions}
+          of ${POTION.maxCarry}</div>`;
+      this.placeTip(e.clientX, e.clientY);
+    });
+    el.addEventListener('mouseleave', () => { this.tooltip.style.display = 'none'; });
+    this.potionDrawn = null;
+  }
+
+  renderPotions() {
+    const s = this.game.state;
+    const el = $('#potion-slot');
+    const empty = s.potions <= 0;
+    if (this.potionDrawn !== s.potions) {
+      this.potionDrawn = s.potions;
+      drawPotionIcon(el.querySelector('canvas'), s.potions);
+      el.classList.toggle('empty', empty);
+      $('#potion-count').textContent = s.potions;
+    }
+    const wedge = el.querySelector('.cd');
+    if (s.potionCd > 0) {
+      wedge.style.display = 'block';
+      wedge.style.background =
+        `conic-gradient(rgba(0,0,0,.72) ${(s.potionCd / POTION.cooldown) * 360}deg, rgba(0,0,0,0) 0deg)`;
+      wedge.firstElementChild.textContent = Math.ceil(s.potionCd);
+    } else if (wedge.style.display !== 'none') {
+      wedge.style.display = 'none';
+    }
   }
 
   /** One tooltip body for a skill, used by the bar and by the tree. */
@@ -513,7 +556,10 @@ export class UI {
     this.nudgeLeft = left;
     const el = $('#skill-nudge');
     el.classList.toggle('hidden', left <= 0);
-    if (left > 0) $('#nudge-count').textContent = left;
+    if (left > 0) {
+      $('#nudge-count').textContent = left;
+      el.lastChild.previousSibling.textContent = left === 1 ? ' skill point · ' : ' skill points · ';
+    }
   }
 
   setBars(hpPct, staPct, xpPct, level) {
@@ -635,7 +681,29 @@ export class UI {
       <div class="shop-col"><div class="col-label">Your things</div><div class="shop-list" id="sell-list"></div></div>`;
     const buy = $('#buy-list'), sell = $('#sell-list');
 
-    if (!game.stock.length) buy.innerHTML = '<div class="shop-empty">Sold out for today.</div>';
+    // potions first — they are what you actually come back for
+    {
+      const el = document.createElement('div');
+      el.className = 'shop-row';
+      el.style.setProperty('--rare', POTION.color);
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      el.appendChild(c);
+      drawPotionIcon(c, 1);
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML = `<div class="nm" style="color:${POTION.color}">${POTION.name}</div>
+        <div class="st">back ${Math.round(POTION.heal * 100)}% of your life ·
+          you carry ${game.state.potions}/${POTION.maxCarry}</div>`;
+      el.appendChild(info);
+      const btn = document.createElement('button');
+      btn.textContent = `Buy ${POTION.price}`;
+      btn.disabled = game.state.gold < POTION.price || game.state.potions >= POTION.maxCarry;
+      btn.addEventListener('click', () => { game.buyPotion(); this.openMerchant(game); });
+      el.appendChild(btn);
+      buy.appendChild(el);
+    }
+    if (!game.stock.length) buy.innerHTML += '<div class="shop-empty">No gear for sale today.</div>';
     for (const item of game.stock) {
       const price = game.buyPrice(item);
       buy.appendChild(row(item, 'Buy', price, game.state.gold >= price,

@@ -39,13 +39,16 @@ Three.js is vendored in `vendor/three.module.js`, so it runs completely offline.
 | `Shift` | run |
 | `I` | open the bag |
 | `K` | open the skill tree |
+| `Q` | drink a health potion |
 | `E` | talk to the townsfolk |
 
 Doorways need no key — walk into the mausoleum to go down, onto the stairs to come back up.
 
 Solid things are solid: tree trunks, cottages, the well, the market counters and
 the mausoleum walls all stop you, and stop the creatures too, so nothing can be
-shoved through a wall. The mausoleum's doorway is the gap in its front wall —
+shoved through a wall. Creatures are solid as well — walking into one stops
+*you*, it does not push the creature across the floor. It only gives way when you
+have nowhere left to go, so you can never be crushed into a wall. The mausoleum's doorway is the gap in its front wall —
 that one you walk straight into.
 | `1`–`8` | use an ability |
 | `Esc` | pause |
@@ -172,6 +175,27 @@ slot to empty it. Passive skills never go on the bar.
 The rank sits in the corner of each slot, a running cooldown sweeps around it
 with the seconds left, and timed effects sit as pills above the bar. A gold pip
 by the XP bar tells you when you have points you have not spent.
+
+### Staying alive
+
+Nothing heals you for free. Standing still does not, and neither does standing
+in town — the town keeps monsters off you, it is not a hospital. Life comes back
+from exactly four places, and all of them cost you something:
+
+* **Potions**, on `Q`. One kind, one number: a potion gives back 35% of your
+  maximum life, so it is worth the same at level 1 and at level 30. Eight
+  seconds between drinks, so it is a decision and not a button you hold. You
+  carry ten, start with two, find them off roughly one kill in five, and the
+  merchant always has more at 20 gold.
+* **Gear with `life per second` on it.** A new stat that turns up on armour,
+  amulets and swords like any other. It is a small whole number — 1 to 4 — and
+  it ticks all the time, in a fight or out of one.
+* **The Vitality skill**, at the bottom of the Warden branch, which is the same
+  thing bought with skill points instead of gold.
+* **The healer** in town, who charges by how hurt you are.
+
+Dying costs you nothing but the walk back, so a run that goes wrong is never a
+dead end.
 
 ### The town
 

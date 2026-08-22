@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createWorld, heightAt, TOWN, townDistance } from './world.js';
 import { createPlayerModel, createMonsterModel, createWeaponMesh, createNpcModel } from './characters.js';
-import { makeItem, itemScore, RARITIES } from './items.js';
+import { makeItem, itemScore, RARITIES, POTION } from './items.js';
 import { createTown } from './town.js';
 import { makeColliders } from './collide.js';
 import { KINDS, statsFor } from './monsters.js';
@@ -37,6 +37,8 @@ const state = {
   hp: 100,
   stamina: 100,
   gold: 0,
+  potions: 2,                          // two to start, so the key gets found
+  potionCd: 0,
   bag: [],
   cooldowns: {},
   buffs: { shield: 0, rage: 0 },
@@ -52,13 +54,14 @@ const BASE = { hp: 100, damage: 6, stamina: 100, speed: 4.2 };
 const xpForLevel = lvl => 40 + (lvl - 1) * 32;
 
 function totals() {
-  let liv = 0, skade = 0, smidighed = 0, styrke = 0, tier = 0;
+  let liv = 0, skade = 0, smidighed = 0, styrke = 0, gearRegen = 0, tier = 0;
   for (const item of Object.values(state.equipped)) {
     if (!item) continue;
     liv += item.stats.liv || 0;
     skade += item.stats.skade || 0;
     smidighed += item.stats.smidighed || 0;
     styrke += item.stats.styrke || 0;
+    gearRegen += item.stats.regen || 0;
     if (item.slot === 'weapon') tier = item.tier;
   }
   const lvl = state.level;
@@ -75,7 +78,8 @@ function totals() {
     crit: 0.12 + smidighed * 0.004 + p.crit,
     lifesteal: p.lifesteal,
     healing: p.healing,
-    regen: p.regen,
+    regen: gearRegen + p.regen,
+    gearRegen,
     skillPoints: pointsLeft(lvl, state.ranks),
   };
 }
@@ -655,25 +659,28 @@ function finishMonsterFrame(m, dt) {
   const wallRadius = m.kind.boss ? 1.1 : 0.55;
   pushOutOfWalls(m.pos, wallRadius);
 
-  // never stand inside the player
-  const sep = tmpV.copy(m.pos).sub(player.pos);
+  // Never stand inside the player — and a creature is not a crate. Walking into
+  // one stops you; it does not shove it across the floor. So the overlap is
+  // resolved by moving US out, and the creature only gives way when we have
+  // nowhere left to go (backed into a wall, or with something behind us).
+  const sep = tmpV.copy(player.pos).sub(m.pos);
   sep.y = 0;
   const sepD = sep.length();
   const body = m.kind.bodyRadius ?? 1.4;
   if (sepD < body && sepD > 0.001) {
     sep.normalize();
-    m.pos.copy(player.pos).addScaledVector(sep, body);
-    // the shove must not bury it in a wall, so put it back on open ground first
-    pushOutOfWalls(m.pos, wallRadius);
-    // if it is still inside us it has nowhere to go — a creature backed against
-    // a wall is not pushed through it, we give way instead
-    const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
+    player.pos.x = m.pos.x + sep.x * body;
+    player.pos.z = m.pos.z + sep.z * body;
+    pushOutOfWalls(player.pos, 0.45);
+    // still overlapping means we are pinned — now the creature is the one that
+    // has to move, and it must not end up inside a wall either
+    const dx = player.pos.x - m.pos.x, dz = player.pos.z - m.pos.z;
     const d = Math.hypot(dx, dz);
     if (d < body - 0.02) {
       const ux = d > 0.001 ? dx / d : sep.x, uz = d > 0.001 ? dz / d : sep.z;
-      player.pos.x = m.pos.x - ux * body;
-      player.pos.z = m.pos.z - uz * body;
-      pushOutOfWalls(player.pos, 0.45);
+      m.pos.x = player.pos.x - ux * body;
+      m.pos.z = player.pos.z - uz * body;
+      pushOutOfWalls(m.pos, wallRadius);
     }
   }
   m.pos.y = 0;
@@ -823,6 +830,7 @@ addEventListener('keydown', e => {
   }
   if (k === 'e') { talk(); return; }
   if (k === 'k') { e.preventDefault(); toggleSkills(); return; }
+  if (k === 'q') { drinkPotion(); return; }
   if (k >= '1' && k <= '8') {
     useAbility(+k - 1);
     return;
@@ -875,6 +883,15 @@ const game = {
   state,
   totals,
   useAbility,
+  drinkPotion,
+  potionPrice: () => POTION.price,
+  buyPotion() {
+    if (state.gold < POTION.price || state.potions >= POTION.maxCarry) return false;
+    state.gold -= POTION.price;
+    state.potions++;
+    ui.renderPotions();
+    return true;
+  },
 
   /* ---------------- skill tree ---------------- */
   /** Put a point in a node. Returns true if it went in. */
@@ -1102,7 +1119,7 @@ function killMonster(m) {
   const gold = m.gold + Math.floor(Math.random() * 4);
   state.gold += gold;
   ui.setGold(state.gold);
-  ui.floatText(`+${gold} guld`, screenOf(m.pos, m.kind.barY - 0.4), 'gold');
+  ui.floatText(`+${gold} gold`, screenOf(m.pos, m.kind.barY - 0.4), 'gold');
   ui.removeEnemyBar(m.id);
 
   // loot is uncommon, and what drops is judged by what you killed rather than
@@ -1115,6 +1132,18 @@ function killMonster(m) {
     dropLoot(makeItem(roll(), lootLevel + 1, Math.random), m.pos);
   } else if (Math.random() < (m.kind.loot ?? 0.3)) {
     dropLoot(makeItem(roll(), lootLevel, Math.random), m.pos);
+  }
+
+  // potions drop on their own roll — with nothing healing you for free they
+  // have to come in steadily, and the boss always leaves a couple
+  const bottles = m.kind.boss ? 2 : (Math.random() < POTION.dropChance ? 1 : 0);
+  if (bottles) {
+    const room = Math.min(bottles, POTION.maxCarry - state.potions);
+    if (room > 0) {
+      state.potions += room;
+      ui.floatText(`+${room} potion${room > 1 ? 's' : ''}`, screenOf(m.pos, m.kind.barY + 0.6), 'loot');
+      ui.renderPotions();
+    }
   }
 }
 
@@ -1200,6 +1229,24 @@ function die() {
   state.running = false;
   document.exitPointerLock?.();
   document.getElementById('death').classList.remove('hidden');
+}
+
+/** Drink one. Heals a share of maximum life, so it is worth the same at 1 and 30. */
+function drinkPotion() {
+  if (!state.running || state.dead) return false;
+  if (state.potions <= 0) { ui.toast('No potions left — the merchant sells them', 1500); return false; }
+  if (state.potionCd > 0) return false;
+  const t = totals();
+  if (state.hp >= t.maxHp) { ui.toast('You are already at full life', 1200); return false; }
+  const healed = Math.min(Math.round(t.maxHp * POTION.heal), Math.round(t.maxHp - state.hp));
+  state.potions--;
+  state.potionCd = POTION.cooldown;
+  state.hp = Math.min(t.maxHp, state.hp + healed);
+  ringFx(player.pos.x, player.pos.z, 2.0, POTION.color, 0.45);
+  ui.floatText(`+${healed}`, screenOf(player.pos, 2.2), 'loot');
+  ui.renderPotions();
+  ui.renderStats();
+  return true;
 }
 
 /* --------------------------- abilities --------------------------- */
@@ -1346,6 +1393,7 @@ function useAbility(slot) {
 }
 
 function updateAbilities(dt) {
+  if (state.potionCd > 0) state.potionCd = Math.max(0, state.potionCd - dt);
   for (const id in state.cooldowns) {
     if (state.cooldowns[id] > 0) state.cooldowns[id] = Math.max(0, state.cooldowns[id] - dt);
   }
@@ -1382,14 +1430,10 @@ function updatePlayer(dt) {
     state.stamina + (sprinting ? -18 : 14) * dt, 0, t.maxStamina);
   if (sprinting) state.stamina = Math.max(0, state.stamina);
 
-  // slow health regen out of combat — Livskraft keeps ticking mid-fight too
-  if (inTown()) {
-    state.hp = Math.min(t.maxHp, state.hp + (9 + t.regen) * dt);
-  } else if (!monstersInRange(player.pos, 14).length) {
-    state.hp = Math.min(t.maxHp, state.hp + (3.5 + t.regen) * dt);
-  } else if (t.regen > 0) {
-    state.hp = Math.min(t.maxHp, state.hp + t.regen * dt);
-  }
+  // Nothing heals you for free — not resting, not standing in town. Life comes
+  // back from gear with "life per second" on it, from the Vitality skill, from
+  // a potion, or from paying the healer.
+  if (t.regen > 0) state.hp = Math.min(t.maxHp, state.hp + t.regen * dt);
 
   for (const npc of npcs) {
     const dx = player.pos.x - npc.spot.x, dz = player.pos.z - npc.spot.z;
@@ -1554,6 +1598,7 @@ function frame() {
   ui.renderAbilities();
   ui.renderBuffs(state.buffs);
   ui.setSkillNudge(t.skillPoints);
+  ui.renderPotions();
   ui.setBars(
     THREE.MathUtils.clamp(state.hp / t.maxHp, 0, 1),
     THREE.MathUtils.clamp(state.stamina / t.maxStamina, 0, 1),
@@ -1665,6 +1710,7 @@ window.__dj = {
   itemScore,
   kinds: KINDS,
   statsFor,
+  ui,
   /** Counts as its own swing, so the lifesteal cap behaves as it does in play. */
   damageMonster: (m, amount, crit) => { beginSwing(); damageMonster(m, amount, crit); },
   hitMany: (list, amount) => { beginSwing(); for (const m of list) damageMonster(m, amount, false); },
@@ -1680,6 +1726,7 @@ window.__dj = {
   startAttackOn: (m, name) => startAttack(m, name),
   attack() { wantAttack = true; },
   useAbility,
+  drinkPotion,
   abilities: ABILITIES,
   get ranks() { return state.ranks; },
   get bar() { return state.bar; },

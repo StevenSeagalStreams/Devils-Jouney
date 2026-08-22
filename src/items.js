@@ -20,7 +20,72 @@ export const STAT_LABEL = {
   liv: 'life',
   smidighed: 'agility',
   styrke: 'strength',
+  regen: 'life per second',
 };
+
+/* Potions. One kind, one number, one key — nothing heals you for free any more,
+   so this is the sustain you carry with you. It heals a share of your maximum
+   life rather than a flat amount, so a potion is worth the same at every level. */
+export const POTION = {
+  name: 'Health Potion',
+  color: '#ff5566',
+  heal: 0.35,            // of maximum life
+  cooldown: 8,           // seconds, so it is not a panic button you hold down
+  price: 20,
+  maxCarry: 10,
+  dropChance: 0.22,
+};
+
+export function drawPotionIcon(canvas, count = 1) {
+  const g = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  g.clearRect(0, 0, w, h);
+  const empty = count <= 0;
+
+  const grd = g.createRadialGradient(w / 2, h * 0.55, 4, w / 2, h / 2, w * 0.62);
+  grd.addColorStop(0, hexA(POTION.color, empty ? 0.04 : 0.14));
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, w, h);
+
+  g.save();
+  g.translate(w / 2, h / 2);
+  g.scale(w / 96, h / 96);
+  g.lineJoin = g.lineCap = 'round';
+
+  const glass = empty ? 'rgba(150,150,150,.35)' : 'rgba(226,236,244,.9)';
+  const fluid = empty ? '#3a2429' : POTION.color;
+
+  // a round flask with a short neck and a cork
+  g.beginPath();
+  g.moveTo(-7, -30); g.lineTo(-7, -16);
+  g.bezierCurveTo(-26, -8, -26, 30, 0, 30);
+  g.bezierCurveTo(26, 30, 26, -8, 7, -16);
+  g.lineTo(7, -30);
+  g.closePath();
+  g.fillStyle = 'rgba(18,22,26,.75)';
+  g.fill();
+  g.strokeStyle = glass; g.lineWidth = 4; g.stroke();
+
+  if (!empty) {                       // the liquid, filling the bulb
+    g.save();
+    g.beginPath();
+    g.moveTo(-7, -16);
+    g.bezierCurveTo(-26, -8, -26, 30, 0, 30);
+    g.bezierCurveTo(26, 30, 26, -8, 7, -16);
+    g.closePath();
+    g.clip();
+    g.fillStyle = fluid;
+    g.fillRect(-30, -4, 60, 40);
+    g.fillStyle = 'rgba(255,255,255,.22)';
+    g.beginPath(); g.ellipse(-9, 8, 5, 9, -0.4, 0, Math.PI * 2); g.fill();
+    g.restore();
+  }
+
+  g.fillStyle = empty ? '#4a4038' : '#8a6a3a';    // cork
+  g.beginPath(); g.roundRect(-10, -38, 20, 11, 3); g.fill();
+  g.restore();
+}
 
 let nextId = 1;
 
@@ -44,10 +109,15 @@ export function makeItem(type, level, rng = Math.random, forcedRarity = null) {
   const stats = {};
   stats[t.main] = Math.max(1, Math.round(scale * rarity.mult * (0.85 + rng() * 0.3)));
 
-  const extras = ['smidighed', 'styrke', 'liv'].filter(s => s !== t.main);
+  // Nothing heals you on its own any more, so "life per second" is a real
+  // choice on a piece of gear rather than a rounding error. It stays a small
+  // whole number: 1 to 4 or so, which is why it does not scale with level.
+  const extras = ['smidighed', 'styrke', 'liv', 'regen'].filter(s => s !== t.main);
   for (let i = 0; i < rarity.statCount - 1 && extras.length; i++) {
     const pick = extras.splice(Math.floor(rng() * extras.length), 1)[0];
-    stats[pick] = Math.max(1, Math.round((1 + level * 0.45) * rarity.mult * (0.7 + rng() * 0.5)));
+    stats[pick] = pick === 'regen'
+      ? Math.max(1, Math.round(rarity.mult * (0.8 + rng() * 1.4)))
+      : Math.max(1, Math.round((1 + level * 0.45) * rarity.mult * (0.7 + rng() * 0.5)));
   }
 
   return {
@@ -68,10 +138,11 @@ export function makeItem(type, level, rng = Math.random, forcedRarity = null) {
 export function itemScore(item) {
   if (!item) return 0;
   const s = item.stats;
-  return (s.skade || 0) * 2 + (s.styrke || 0) * 1.6 + (s.smidighed || 0) * 1.4 + (s.liv || 0) * 0.8;
+  return (s.skade || 0) * 2 + (s.styrke || 0) * 1.6 + (s.smidighed || 0) * 1.4
+    + (s.liv || 0) * 0.8 + (s.regen || 0) * 6;
 }
 
-const STAT_ORDER = ['smidighed', 'styrke', 'skade', 'liv'];
+const STAT_ORDER = ['smidighed', 'styrke', 'skade', 'liv', 'regen'];
 export function statLines(item) {
   return Object.entries(item.stats)
     .sort((a, b) => STAT_ORDER.indexOf(a[0]) - STAT_ORDER.indexOf(b[0]))

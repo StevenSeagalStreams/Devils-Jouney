@@ -994,6 +994,96 @@ await page.keyboard.up('w');
 check('walking onto the stairs brings you back up',
   (await page.evaluate(() => window.__dj.zone)) === 'overworld');
 
+/* ------------------- potions, regen, and shoving ------------------- */
+const shoveTest = await page.evaluate(async () => {
+  const d = window.__dj;
+  const out = [];
+  for (const [kindId, z] of [['boar', 'overworld'], ['brute', 'dungeon'], ['archer', 'dungeon'],
+                             ['guard', 'dungeon'], ['boss', 'dungeon']]) {
+    d.setZone(z);
+    await new Promise(r => setTimeout(r, 300));
+    const m = d.monsters.find(x => x.kindId === kindId && !x.dead);
+    if (!m) { out.push({ kindId, moved: -1 }); continue; }
+    const spot = { x: m.pos.x, z: m.pos.z };
+    // pin its brain, so anything that moves it is the shove and not the AI
+    const freeze = () => { m.state = 'idle'; m.stateT = 0; m.atk = null; m.angry = 0;
+                           m.cooldown = 99; m.wander.set(0, 0, 0); };
+    freeze();
+    const body = m.kind.bodyRadius ?? 1.4;
+    d.player.pos.set(spot.x, 0, spot.z - body - 0.1);
+    d.player.yaw = 0;
+    for (let i = 0; i < 25; i++) {
+      freeze();
+      d.player.pos.z += 0.35;                       // walk straight into it
+      await new Promise(r => requestAnimationFrame(r));
+    }
+    out.push({ kindId, moved: +Math.hypot(m.pos.x - spot.x, m.pos.z - spot.z).toFixed(2),
+               gap: +Math.hypot(d.player.pos.x - m.pos.x, d.player.pos.z - m.pos.z).toFixed(2), body });
+  }
+  d.setZone('overworld');
+  return out;
+});
+check('no creature can be shoved around by walking into it',
+  shoveTest.every(r => r.moved === 0 && Math.abs(r.gap - r.body) < 0.15),
+  shoveTest.map(r => `${r.kindId} ${r.moved}m`).join(', '));
+await gameWait(0.4);
+
+const regenTest = await page.evaluate(async () => {
+  const d = window.__dj;
+  const out = {};
+  const rest = async secs => {
+    d.state.hp = 50;
+    const t0 = d.gameTime;
+    while (d.gameTime - t0 < secs) await new Promise(r => requestAnimationFrame(r));
+    return Math.round(d.state.hp - 50);
+  };
+  d.forget();
+  d.state.equipped.armor = null; d.state.equipped.trinket = null;
+  d.player.pos.set(0, 0, 40);                        // alone in the meadow
+  out.bare = await rest(3);
+  d.player.pos.set(0, 0, 0);
+  out.inTown = await rest(2);                        // town is safe, not a hospital
+  d.game.equip(Object.assign(d.makeItem('armor', 5), { stats: { liv: 5, regen: 3 } }));
+  out.gear = await rest(3);
+  d.state.equipped.armor = null;
+  d.state.level = 20;
+  for (const id of ['forbinding', 'haerdet', 'stenhud']) d.learn(id, 1);
+  d.learn('livskraft', 3);
+  out.skill = await rest(3);
+  d.forget(); d.state.level = 1;
+  return out;
+});
+check('nothing heals you for free any more', regenTest.bare === 0 && regenTest.inTown === 0,
+  `resting ${regenTest.bare} hp, in town ${regenTest.inTown} hp`);
+check('gear with life per second does heal you', regenTest.gear >= 8 && regenTest.gear <= 10, `+${regenTest.gear} over 3s at +3/s`);
+check('the Vitality skill still heals you', regenTest.skill >= 8 && regenTest.skill <= 10, `+${regenTest.skill} over 3s at rank 3`);
+
+const potionTest = await page.evaluate(() => {
+  const d = window.__dj;
+  const out = {};
+  d.state.potions = 2; d.state.potionCd = 0; d.state.dead = false;
+  const t = d.totals();
+  d.state.hp = 10;
+  out.drank = d.drinkPotion();
+  out.healed = Math.round(d.state.hp - 10);
+  out.want = Math.round(t.maxHp * 0.35);
+  out.left = d.state.potions;
+  out.onCooldown = d.drinkPotion() === false;
+  d.state.potionCd = 0; d.state.potions = 0;
+  out.emptyRefused = d.drinkPotion() === false;
+  d.state.gold = 100;
+  const price = d.game.potionPrice();
+  out.bought = d.game.buyPotion() && d.state.potions === 1 && d.state.gold === 100 - price;
+  d.state.potions = 2; d.state.potionCd = 0;
+  return out;
+});
+check('a potion heals a share of your life and is used up',
+  potionTest.drank && potionTest.healed === potionTest.want && potionTest.left === 1,
+  `+${potionTest.healed} hp (wanted ${potionTest.want}), ${potionTest.left} left`);
+check('you cannot chain potions, or drink one you do not have',
+  potionTest.onCooldown && potionTest.emptyRefused);
+check('the merchant sells potions', potionTest.bought);
+
 await page.screenshot({ path: 'shots/test-final.png' });
 console.log(checks.join('\n'));
 console.log(errors.length ? '\nERRORS:\n' + errors.slice(0, 10).join('\n') : '\nno page errors');

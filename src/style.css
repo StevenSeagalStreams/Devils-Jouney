@@ -149,6 +149,25 @@ body{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--txt);-
 .item-stats{font-size:15px;color:#e6e2d6;line-height:1.25;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8)}
 .dock-right{display:flex;flex-direction:column;gap:8px;justify-content:space-between}
 .hotbar{display:flex;gap:8px}
+.bar-row{display:flex;gap:8px;align-items:center}
+/* the potion sits apart from the eight skills — it is not one of them */
+.slot.potion{margin-right:6px;border-color:#5a2f36}
+.slot.potion::after{
+  content:'';position:absolute;right:-9px;top:12%;bottom:12%;width:2px;background:#2a2a2a;
+}
+.slot.potion .count{
+  position:absolute;left:4px;top:1px;font-size:12.5px;font-weight:800;color:#ffd473;
+  text-shadow:0 1px 2px rgba(0,0,0,.9);pointer-events:none;
+}
+.slot.potion.empty{filter:grayscale(.85) brightness(.6);border-color:#2c2c2c}
+.slot.potion.empty .count{color:#7a7a7a}
+.slot.potion .cd{
+  position:absolute;inset:-1px;display:none;border-radius:5px;pointer-events:none;
+}
+.slot.potion .cd span{
+  font-size:17px;font-weight:800;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.9);
+  position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;
+}
 
 .slot{
   width:62px;height:62px;border-radius:6px;position:relative;

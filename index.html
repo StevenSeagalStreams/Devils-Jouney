@@ -46,7 +46,15 @@
         </div>
         <div class="dock-right">
           <div class="buffs" id="buffs"></div>
-          <div class="hotbar" id="hotbar"></div>
+          <div class="bar-row">
+            <div class="slot potion" id="potion-slot" title="Drink a potion (Q)">
+              <canvas class="icon" width="96" height="96"></canvas>
+              <div class="cd"><span></span></div>
+              <div class="count" id="potion-count">0</div>
+              <span class="key">Q</span>
+            </div>
+            <div class="hotbar" id="hotbar"></div>
+          </div>
           <div class="xp-row">
             <div class="skill-nudge hidden" id="skill-nudge"><b id="nudge-count">1</b> skill points · <b>K</b></div>
             <div class="xp-bar"><div class="fill" id="xp-fill"></div></div>
@@ -118,6 +126,7 @@
           <li><b>Left click</b> swing</li>
           <li><b>Shift</b> run</li>
           <li class="wide"><b>1–8</b> skills · <b>I</b> bag · <b>K</b> skill tree</li>
+          <li><b>Q</b> drink a potion</li>
           <li><b>E</b> talk to people in town</li>
         </ul>
         <p class="lead">You start with one skill point — press <b>K</b> and pick your first skill.</p>
