@@ -623,14 +623,32 @@ function updateMonster(m, dt, index) {
 function finishMonsterFrame(m, dt) {
   if (m.state !== 'idle' && inTown()) { m.state = 'idle'; m.stateT = 0; m.atk = null; }
 
-  if (zone === 'dungeon') collideMaze(m.pos, m.kind.boss ? 1.1 : 0.55);
+  const wallRadius = m.kind.boss ? 1.1 : 0.55;
+  if (zone === 'dungeon') collideMaze(m.pos, wallRadius);
 
   // never stand inside the player
   const sep = tmpV.copy(m.pos).sub(player.pos);
   sep.y = 0;
   const sepD = sep.length();
   const body = m.kind.bodyRadius ?? 1.4;
-  if (sepD < body && sepD > 0.001) m.pos.copy(player.pos).addScaledVector(sep.normalize(), body);
+  if (sepD < body && sepD > 0.001) {
+    sep.normalize();
+    m.pos.copy(player.pos).addScaledVector(sep, body);
+    if (zone === 'dungeon') {
+      // the shove must not bury it in stone, so put it back on the floor first
+      collideMaze(m.pos, wallRadius);
+      // if it is still inside us it has nowhere to go — a creature backed
+      // against a wall is not pushed through it, we give way instead
+      const dx = m.pos.x - player.pos.x, dz = m.pos.z - player.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d < body - 0.02) {
+        const ux = d > 0.001 ? dx / d : sep.x, uz = d > 0.001 ? dz / d : sep.z;
+        player.pos.x = m.pos.x - ux * body;
+        player.pos.z = m.pos.z - uz * body;
+        collideMaze(player.pos, 0.45);
+      }
+    }
+  }
   m.pos.y = 0;
 
   // the town fence turns everything away — applied last so nothing, not even
@@ -1383,10 +1401,11 @@ function updateDrops(dt) {
     d.obj.position.y = groundY(d.obj.position.x, d.obj.position.z) + 0.7 + Math.sin(d.t * 2.2) * 0.12;
     if (Math.hypot(d.obj.position.x - player.pos.x, d.obj.position.z - player.pos.z) < 2.0) {
       state.bag.unshift(d.item);
-        // auto-equip if it is clearly better, so the demo stays friendly
+      // straight into the bag — what you wear is your call, changed in the bag (I)
       const cur = state.equipped[d.item.slot];
-      if (!cur || itemScore(d.item) > itemScore(cur)) game.equip(d.item);
-      else { ui.renderAll(); ui.toast(`Fandt ${d.item.name}`, 1300); }
+      const better = !cur || itemScore(d.item) > itemScore(cur);
+      ui.renderAll();
+      ui.toast(better ? `Fandt ${d.item.name} — bedre end dit nuværende` : `Fandt ${d.item.name}`, 1600);
       ui.floatText(d.item.name, screenOf(d.obj.position, 1.2), 'loot');
       scene.remove(d.obj);
       drops.splice(i, 1);
@@ -1538,6 +1557,7 @@ window.__dj = {
   useAbility,
   abilities: ABILITIES,
   forceAttack(kind) { const m = nearestMonster() || monsters[0]; if (m) { m.cooldown = 0; startAttack(m, kind); } },
+  dropItemAt(item, x, z) { dropLoot(item, new THREE.Vector3(x, 0, z)); },
   dropAt(x, z) {
     const item = makeItem('armor', state.level);
     dropLoot(item, new THREE.Vector3(x, 0, z));

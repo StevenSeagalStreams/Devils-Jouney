@@ -52,8 +52,9 @@ Doorways need no key — walk into the mausoleum to go down, onto the stairs to 
 * Killing anything gives xp and gold. Loot is uncommon — roughly one kill in
   five for a boar, one in three for most crypt dwellers, and a little better
   from a shield guard. The boss always pays out, twice.
-* Walk over an item to pick it up. If it beats what you wear, you put it on
-  automatically — no menu digging.
+* Walk over an item to pick it up — it goes into your bag. Nothing is ever
+  swapped onto you: open the bag with `I` and click what you want to wear. A
+  drop that beats what you have on says so when you pick it up.
 * Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`),
   and rarity is just a colour: grey → green → blue → purple → orange. Most of
   what drops is plain; the good stuff is meant to be a find.

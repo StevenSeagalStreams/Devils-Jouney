@@ -112,6 +112,37 @@ const provoked = await page.evaluate(() => window.__dj.state.hp);
 check('wildlife fights back once you hit it', provoke.hurt > 0 && provoke.angry && provoked < 100,
   `hp ${Math.round(provoked)}`);
 
+// gear is never swapped for you
+const manual = await page.evaluate(() => {
+  const d = window.__dj;
+  const worn = d.state.equipped.weapon;
+  const great = d.makeItem('weapon', 12, Math.random);
+  great.stats = { skade: 99 };                   // plainly better than anything worn
+  d.dropItemAt(great, d.player.pos.x, d.player.pos.z);
+  return { worn: worn.name, bagBefore: d.state.bag.length };
+});
+await gameWait(0.6);
+const afterGreat = await page.evaluate(() => {
+  const d = window.__dj;
+  return { worn: d.state.equipped.weapon.name, bag: d.state.bag.length,
+    inBag: d.state.bag.some(i => i.stats.skade === 99) };
+});
+check('a better drop waits in the bag instead of equipping itself',
+  afterGreat.worn === manual.worn && afterGreat.inBag && afterGreat.bag > manual.bagBefore,
+  `still wearing ${afterGreat.worn}, bag ${manual.bagBefore} -> ${afterGreat.bag}`);
+
+const byHand = await page.evaluate(() => {
+  const d = window.__dj;
+  d.game.equip(d.state.bag.find(i => i.stats.skade === 99));
+  return d.state.equipped.weapon.stats.skade;
+});
+check('equipping from the bag still works', byHand === 99, `now wearing ${byHand} skade`);
+await page.evaluate(() => {
+  const d = window.__dj;                          // put the plain sword back on
+  const plain = d.state.bag.find(i => i.type === 'weapon' && i.stats.skade !== 99);
+  if (plain) d.game.equip(plain);
+});
+
 /* --------------------------- levelling balance --------------------------- */
 const balance = await page.evaluate(() => {
   const d = window.__dj;
@@ -464,6 +495,47 @@ if (hideSpot) {
   check('health bars are limited to what you can see', bars.hiddenCount > 0,
     `${bars.seen} visible, ${bars.hiddenCount} hidden of ${bars.total}`);
   await page.evaluate(() => { window.__dj.state.level = 1; });
+}
+
+// walking into something must not push it through the wall
+const shove = await page.evaluate(() => {
+  const d = window.__dj;
+  const m = d.monsters.find(x => !x.dead && x.kindId !== 'boss');
+  let spot = null;
+  for (let ang = 0; ang < 6.28 && !spot; ang += 0.1) {
+    for (let r = 1; r < 4; r += 0.25) {
+      const x = m.pos.x + Math.cos(ang) * r, z = m.pos.z + Math.sin(ang) * r;
+      if (d.mazeBlocked(x, z, 0.4)) { spot = { wx: x, wz: z, ang }; break; }
+    }
+  }
+  if (!spot) return { skipped: true };
+  m.pos.set(spot.wx - Math.cos(spot.ang) * 0.9, 0, spot.wz - Math.sin(spot.ang) * 0.9);
+  m.state = 'idle'; m.cooldown = 999;
+  d.player.pos.set(m.pos.x - Math.cos(spot.ang) * 1.2, 0, m.pos.z - Math.sin(spot.ang) * 1.2);
+  return { id: m.id, ang: spot.ang };
+});
+if (!shove.skipped) {
+  for (let i = 0; i < 25; i++) {
+    await page.evaluate(sp => {
+      const d = window.__dj;
+      const m = d.monsters.find(x => x.id === sp.id);
+      if (!m) return;
+      d.player.pos.x = m.pos.x - Math.cos(sp.ang) * 0.4;   // press right through it
+      d.player.pos.z = m.pos.z - Math.sin(sp.ang) * 0.4;
+    }, shove);
+    await gameWait(0.1);
+  }
+  const buried = await page.evaluate(sp => {
+    const d = window.__dj;
+    const m = d.monsters.find(x => x.id === sp.id);
+    return m ? {
+      inWall: d.mazeBlocked(m.pos.x, m.pos.z, 0.35),
+      playerInWall: d.mazeBlocked(d.player.pos.x, d.player.pos.z, 0.3),
+    } : null;
+  }, shove);
+  check('creatures cannot be shoved through walls',
+    buried && !buried.inWall && !buried.playerInWall,
+    buried ? `creature in stone: ${buried.inWall}, hero in stone: ${buried.playerInWall}` : 'creature gone');
 }
 
 // the crypt stays cleared until you leave
