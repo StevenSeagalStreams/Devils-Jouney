@@ -144,6 +144,10 @@ its whole rotation off — except at the very top, with a finished branch and a
 legendary weapon, where it drops in 2.2 seconds. That is the one place the game
 is meant to feel unfair, and you have to earn it.
 
+Your own `Stormløb` works the same way as his: it sweeps the six metres rather
+than jumping them, so it stops at a wall and catches everything you run through
+instead of only what is standing where you land.
+
 `node tools/balance.mjs` prints that whole table. It is a tick-by-tick simulation
 of the real combat loop — stamina, cooldowns, swing animations, buffs — because
 fights here last seconds, and a 40-second cooldown measured over an infinite

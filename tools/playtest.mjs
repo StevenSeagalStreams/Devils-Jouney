@@ -366,6 +366,63 @@ check('moving a skill on the bar swaps, not clones', tree.moved && tree.swapped 
 check('an untaken skill cannot go on the bar', tree.unlearned);
 check('a maxed shield still lets damage through', tree.shieldCap <= 80, `${tree.shieldCap}% reduction`);
 
+// The number in the tooltip is a promise. Every ability has to keep it.
+const promise = await page.evaluate(() => {
+  const d = window.__dj;
+  const bad = [];
+  const cases = [
+    ['hug', 1, {}], ['hug', 5, { skarp: 5 }],
+    ['hvirvelvind', 3, { hug: 5, skarp: 5 }],
+    ['stormlob', 2, { fodfaeste: 4 }],
+    ['ildstod', 5, { stormlob: 5, praecision: 5 }],
+    ['dommedag', 5, { hvirvelvind: 5, hug: 5, blodtorst: 5, haerdet: 5 }],
+  ];
+  for (const [id, rank, syn] of cases) {
+    d.forget(); d.state.level = 25; d.state.dead = false;
+    for (const [k, v] of Object.entries(syn)) d.learn(k, v);
+    d.learn(id, rank);
+    const promised = d.abilityValue(id);
+    const live = d.monsters.filter(m => !m.dead);
+    live.slice(1).forEach(m => m.pos.set(m.pos.x + 900, 0, m.pos.z + 900));
+    const m = live[0];
+    m.hp = m.maxHp = 1e7;
+    d.player.pos.set(m.pos.x, 0, m.pos.z - 2.0);
+    d.player.yaw = 0;                                // facing it
+    d.state.cooldowns = {}; d.state.stamina = 400;
+    const before = m.hp;
+    d.useAbility(d.bar.indexOf(id));
+    const dealt = before - m.hp;
+    if (dealt !== promised) bad.push(`${id} r${rank}: said ${promised}, dealt ${dealt}`);
+  }
+  // the three that do not deal damage
+  d.forget(); d.state.level = 25; d.state.stamina = 400;
+  d.learn('haerdet', 4); d.learn('forbinding', 3);
+  d.state.hp = 10; d.state.cooldowns = {};
+  const saidHeal = d.abilityValue('forbinding');
+  d.useAbility(d.bar.indexOf('forbinding'));
+  if (Math.round(d.state.hp - 10) !== saidHeal) bad.push(`forbinding: said ${saidHeal}, gave ${Math.round(d.state.hp - 10)}`);
+
+  d.forget(); d.state.level = 25; d.learn('haerdet', 5); d.learn('stenhud', 5);
+  d.state.cooldowns = {}; d.state.stamina = 400;
+  const saidShield = d.abilityValue('stenhud');
+  d.useAbility(d.bar.indexOf('stenhud'));
+  if (d.state.buffPower.shield !== saidShield) bad.push(`stenhud: said ${saidShield}, applied ${d.state.buffPower.shield}`);
+
+  d.forget(); d.state.level = 25;
+  for (const id of ['fodfaeste', 'stormlob', 'ildstod', 'kampraseri']) d.learn(id, 5);
+  d.state.cooldowns = {}; d.state.stamina = 400;
+  const dmgBefore = d.totals().damage;
+  const saidRage = d.abilityValue('kampraseri');
+  d.useAbility(d.bar.indexOf('kampraseri'));
+  const gotRage = Math.round((d.totals().damage / dmgBefore - 1) * 100);
+  if (Math.abs(gotRage - saidRage) > 1) bad.push(`kampraseri: said +${saidRage}%, gave +${gotRage}%`);
+
+  d.forget();
+  d.state.level = 1; d.state.cooldowns = {}; d.state.buffs.shield = 0; d.state.buffs.rage = 0;
+  return bad;
+});
+check('every ability lands exactly what its tooltip promised', promise.length === 0, promise.join(' · '));
+
 /* --------------------- balance guards --------------------- */
 const guard = await page.evaluate(() => {
   const d = window.__dj;

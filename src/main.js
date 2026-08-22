@@ -1278,16 +1278,21 @@ function useAbility(slot) {
     }
     case 'charge': {
       const dir = tmpFacing.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
-      // Walk the dash rather than teleporting it, and stop at the first wall —
-      // a 6 m jump would otherwise carry you straight through the crypt.
+      // Sweep the dash rather than teleporting it: stop at the first wall, so a
+      // 6 m jump cannot carry you through the crypt, and catch everything you
+      // run through — landing first and looking around afterwards misses
+      // whatever you just charged past.
       const steps = 12, step = ability.dash / steps;
+      const caught = new Set(monstersInRange(player.pos, ability.range));
       for (let i = 0; i < steps; i++) {
         const nx = player.pos.x + dir.x * step, nz = player.pos.z + dir.z * step;
         if (zone === 'dungeon' && mazeBlocked(nx, nz, 0.5)) break;
         player.pos.x = nx; player.pos.z = nz;
+        for (const m of monstersInRange(player.pos, ability.range)) caught.add(m);
       }
       ringFx(player.pos.x, player.pos.z, ability.range, ability.color, 0.4);
-      for (const m of monstersInRange(player.pos, ability.range)) {
+      for (const m of caught) {
+        if (m.dead) continue;
         damageMonster(m, power, true);
         // shove it back, but never into the stone
         const bx = m.pos.x + dir.x * 2.2, bz = m.pos.z + dir.z * 2.2;
