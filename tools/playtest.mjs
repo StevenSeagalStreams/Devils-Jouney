@@ -144,6 +144,40 @@ check('the starter sword is plain damage only',
   gear.starterStats.length === 1 && gear.starterStats[0] === 'skade', gear.starterStats.join('+'));
 check('gear rarity is uncommon', gear.epicPct < 8, `${gear.epicPct}% epic or better`);
 
+// what drops has to be worth picking up: the plain starter must be beatable
+const upgrades = await page.evaluate(() => {
+  const d = window.__dj;
+  const starter = d.state.equipped.weapon;
+  const beat = lvl => {
+    let n = 0;
+    for (let i = 0; i < 300; i++) if (d.itemScore(d.makeItem('weapon', lvl, Math.random)) > d.itemScore(starter)) n++;
+    return Math.round(n / 3);
+  };
+  // and once you are wearing good gear, upgrades should get rarer
+  let best = starter, seen = 0, ups = 0;
+  for (const lvl of [1, 2, 3, 4, 6, 8]) {
+    for (let i = 0; i < 60; i++) {
+      const it = d.makeItem('weapon', lvl, Math.random);
+      seen++;
+      if (d.itemScore(it) > d.itemScore(best)) { ups++; best = it; }
+    }
+  }
+  return { atOne: beat(1), atThree: beat(3), upgradeRate: Math.round(ups / seen * 100), bestEnd: best.stats.skade };
+});
+check('early drops beat the plain starter sword', upgrades.atOne > 60,
+  `${upgrades.atOne}% at level 1, ${upgrades.atThree}% at level 3`);
+check('upgrades get rarer once you are geared', upgrades.upgradeRate < 25,
+  `${upgrades.upgradeRate}% of drops were an upgrade, ending at ${upgrades.bestEnd} skade`);
+
+const rates = await page.evaluate(() => {
+  const d = window.__dj;
+  const k = d.kinds;
+  return Object.fromEntries(Object.entries(k).map(([id, v]) => [id, v.loot ?? 0.3]));
+});
+check('loot does not drop from every kill',
+  rates.boar < 0.25 && rates.brute < 0.4 && rates.guard < 0.5 && rates.boss === 1,
+  Object.entries(rates).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(', '));
+
 /* ------------------------------ abilities ------------------------------ */
 const abil = await page.evaluate(() => {
   const d = window.__dj;
@@ -453,10 +487,18 @@ const boss = await page.evaluate(() => {
   const d = window.__dj;
   const b = d.monsters.find(m => m.kindId === 'boss');
   if (!b) return null;
-  return { name: b.name, hp: b.maxHp, attacks: Object.keys(b.kind.attacks), barY: b.kind.barY };
+  // reference numbers come from the kind table: earlier checks inflate live hp
+  const guard = d.statsFor('guard', b.level);
+  const hardest = b.damage * Math.max(...Object.values(b.kind.attacks).map(a => a.dmg));
+  const otherHardest = guard.damage * Math.max(...Object.values(d.kinds.guard.attacks).map(a => a.dmg));
+  return { name: b.name, hp: b.maxHp, attacks: Object.keys(b.kind.attacks), barY: b.kind.barY,
+    toughest: guard.maxHp, hardest, otherHardest };
 });
 check('a boss waits in the crypt', !!boss && boss.attacks.length === 3,
   boss ? `${boss.name}, ${boss.hp} hp, ${boss.attacks.join('/')}` : 'missing');
+check('the boss dwarfs the rest of the crypt',
+  boss && boss.hp > boss.toughest * 5 && boss.hardest > boss.otherHardest * 2,
+  boss ? `${boss.hp} hp vs ${boss.toughest} for a guard; slam ${Math.round(boss.hardest)} vs ${Math.round(boss.otherHardest)}` : '');
 
 // whip: a line on the ground that only hits what stands in it
 await isolate('boss');

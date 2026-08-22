@@ -3,10 +3,10 @@
 
 export const RARITIES = [
   { key: 'normal', name: 'Normal', color: '#b9b9b9', mult: 1.0, statCount: 1 },
-  { key: 'fin', name: 'Fin', color: '#5fd35f', mult: 1.15, statCount: 2 },
-  { key: 'sjaelden', name: 'Sjælden', color: '#4aa8ff', mult: 1.3, statCount: 2 },
-  { key: 'episk', name: 'Episk', color: '#b569ff', mult: 1.5, statCount: 3 },
-  { key: 'legendarisk', name: 'Legendarisk', color: '#ffa32e', mult: 1.75, statCount: 3 },
+  { key: 'fin', name: 'Fin', color: '#5fd35f', mult: 1.2, statCount: 2 },
+  { key: 'sjaelden', name: 'Sjælden', color: '#4aa8ff', mult: 1.45, statCount: 2 },
+  { key: 'episk', name: 'Episk', color: '#b569ff', mult: 1.75, statCount: 3 },
+  { key: 'legendarisk', name: 'Legendarisk', color: '#ffa32e', mult: 2.1, statCount: 3 },
 ];
 
 export const TYPES = {
@@ -38,9 +38,9 @@ export function makeItem(type, level, rng = Math.random, forcedRarity = null) {
   const t = TYPES[type];
   const rarity = forcedRarity ?? rollRarity(level, rng);
   const tier = RARITIES.indexOf(rarity);
-  const scale = t.base + level * 1.2;
+  const scale = t.base + level * 1.6;
   const stats = {};
-  stats[t.main] = Math.max(1, Math.round(scale * rarity.mult * (0.8 + rng() * 0.3)));
+  stats[t.main] = Math.max(1, Math.round(scale * rarity.mult * (0.85 + rng() * 0.3)));
 
   const extras = ['smidighed', 'styrke', 'liv'].filter(s => s !== t.main);
   for (let i = 0; i < rarity.statCount - 1 && extras.length; i++) {

@@ -999,12 +999,16 @@ function killMonster(m) {
   ui.floatText(`+${gold} guld`, screenOf(m.pos, m.kind.barY - 0.4), 'gold');
   ui.removeEnemyBar(m.id);
 
-  // most kills give something; the tougher the creature the better the odds
-  const chance = m.kind.passive ? 0.45 : 0.85;
-  if (Math.random() < chance) {
-    const roll = Math.random();
-    const type = roll < 0.5 ? 'weapon' : roll < 0.82 ? 'armor' : 'trinket';
-    dropLoot(makeItem(type, Math.max(1, state.level), Math.random), m.pos);
+  // loot is uncommon, and what drops is judged by what you killed rather than
+  // by your own level, so the crypt pays better than the meadow
+  const lootLevel = Math.max(1, Math.round((m.level + state.level) / 2));
+  const roll = () => (Math.random() < 0.5 ? 'weapon' : Math.random() < 0.64 ? 'armor' : 'trinket');
+  if (m.kind.boss) {
+    // the boss always pays, and one piece is guaranteed to be worth carrying
+    dropLoot(makeItem(roll(), lootLevel + 1, Math.random, RARITIES[2]), m.pos);
+    dropLoot(makeItem(roll(), lootLevel + 1, Math.random), m.pos);
+  } else if (Math.random() < (m.kind.loot ?? 0.3)) {
+    dropLoot(makeItem(roll(), lootLevel, Math.random), m.pos);
   }
 }
 
@@ -1483,7 +1487,7 @@ document.getElementById('respawn').addEventListener('click', respawn);
 
 // starting gear, so the dock reads like the concept art from frame one
 const starter = makeItem('weapon', 1, Math.random, RARITIES[0]);
-starter.stats = { skade: 8 };
+starter.stats = { skade: 5 };
 starter.name = 'Normal Sværd 1';
 game.equip(starter);
 state.hp = totals().maxHp;
@@ -1517,6 +1521,9 @@ window.__dj = {
   arrows,
   get arrowsFired() { return arrowsFired; },
   makeItem,
+  itemScore,
+  kinds: KINDS,
+  statsFor,
   damageMonster,
   get monster() { return nearestMonster() || monsters[0]; },
   get zone() { return zone; },

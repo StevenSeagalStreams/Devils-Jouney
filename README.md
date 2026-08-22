@@ -49,12 +49,18 @@ Doorways need no key — walk into the mausoleum to go down, onto the stairs to 
   picked.
 * Real monsters live under the mausoleum out west. Walk in through its doorway
   and you are in the crypt; walk back onto the stairs to come up again.
-* Killing anything gives xp and gold, and usually drops one item.
+* Killing anything gives xp and gold. Loot is uncommon — roughly one kill in
+  five for a boar, one in three for most crypt dwellers, and a little better
+  from a shield guard. The boss always pays out, twice.
 * Walk over an item to pick it up. If it beats what you wear, you put it on
   automatically — no menu digging.
 * Every item shows at most three small numbers (`+6 smidighed`, `+14 skade`),
   and rarity is just a colour: grey → green → blue → purple → orange. Most of
   what drops is plain; the good stuff is meant to be a find.
+* The sword you start with is the weakest in the game, so your first real drop
+  is an upgrade. After that, what drops is judged against the creature you
+  killed rather than your own level, which is why the crypt pays better than
+  the meadow.
 * Fill the purple bar and you level up: more life, more damage, full heal.
 
 ### The crypt
