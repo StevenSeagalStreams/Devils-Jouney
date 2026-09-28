@@ -3,3 +3,6 @@ node_modules/
 
 # working screenshots from the review loop; keep the curated ones in docs/
 shots/
+
+# PlatformIO build output (firmware/slot-machine)
+.pio/
